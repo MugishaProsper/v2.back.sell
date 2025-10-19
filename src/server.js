@@ -14,6 +14,7 @@ import aiIntegrationService from './services/ai-integration.service.js';
 import loggerMiddleware from './middlewares/logger.middleware.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import { ipRateLimiter, userRateLimiter } from './middlewares/rate-limit.middleware.js';
+import { sanitizeNoSQL, sanitizeXSS, customSanitize } from './middlewares/sanitization.middleware.js';
 
 // Load environment variables
 configDotenv();
@@ -52,6 +53,11 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
+
+// Data sanitization middleware
+app.use(sanitizeNoSQL); // Prevent NoSQL injection
+app.use(sanitizeXSS); // Prevent XSS attacks
+app.use(customSanitize); // Custom sanitization
 
 // Request logging middleware
 app.use(loggerMiddleware);

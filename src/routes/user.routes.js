@@ -8,6 +8,7 @@ import {
     getUserStats
 } from '../controllers/user.controller.js';
 import { authenticate } from '../middlewares/auth.middleware.js';
+import { validate, userValidation } from '../middlewares/validation.middleware.js';
 
 const router = express.Router();
 
@@ -16,21 +17,21 @@ const router = express.Router();
  * @desc    Get user by ID
  * @access  Public
  */
-router.get('/:id', getUserById);
+router.get('/:id', validate(userValidation.getUserById), getUserById);
 
 /**
  * @route   PUT /api/v1/users/:id
  * @desc    Update user profile
  * @access  Private (user can only update their own profile)
  */
-router.put('/:id', authenticate, updateUser);
+router.put('/:id', authenticate, validate(userValidation.updateUser), updateUser);
 
 /**
  * @route   DELETE /api/v1/users/:id
  * @desc    Delete user account
  * @access  Private (user can only delete their own account)
  */
-router.delete('/:id', authenticate, deleteUser);
+router.delete('/:id', authenticate, validate(userValidation.deleteUser), deleteUser);
 
 /**
  * @route   GET /api/v1/users/:id/auctions

@@ -8,6 +8,7 @@ import {
 } from '../controllers/auth.controller.js';
 import { authenticate } from '../middlewares/auth.middleware.js';
 import { strictRateLimiter } from '../middlewares/rate-limit.middleware.js';
+import { validate, authValidation } from '../middlewares/validation.middleware.js';
 
 const router = express.Router();
 
@@ -16,21 +17,21 @@ const router = express.Router();
  * @desc    Register a new user
  * @access  Public
  */
-router.post('/register', strictRateLimiter, register);
+router.post('/register', strictRateLimiter, validate(authValidation.register), register);
 
 /**
  * @route   POST /api/v1/auth/login
  * @desc    Login user
  * @access  Public
  */
-router.post('/login', strictRateLimiter, login);
+router.post('/login', strictRateLimiter, validate(authValidation.login), login);
 
 /**
  * @route   POST /api/v1/auth/refresh-token
  * @desc    Refresh access token
  * @access  Public
  */
-router.post('/refresh-token', refreshToken);
+router.post('/refresh-token', validate(authValidation.refreshToken), refreshToken);
 
 /**
  * @route   GET /api/v1/auth/me
