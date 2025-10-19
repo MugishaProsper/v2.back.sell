@@ -85,6 +85,7 @@ import bidRoutes from './routes/bid.routes.js';
 import aiWebhookRoutes from './routes/ai-webhook.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
+import auditRoutes from './routes/audit.routes.js';
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRateLimiter, userRoutes);
@@ -93,6 +94,7 @@ app.use('/api/v1/bids', userRateLimiter, bidRoutes);
 app.use('/api/v1/webhooks/ai', aiWebhookRoutes);
 app.use('/api/v1/notifications', userRateLimiter, notificationRoutes);
 app.use('/api/v1/analytics', userRateLimiter, analyticsRoutes);
+app.use('/api/v1/audit', userRateLimiter, auditRoutes);
 
 // Initialize Socket.IO (will be set up in startServer)
 let io;

@@ -94,7 +94,7 @@ export const authenticate = async (req, res, next) => {
  * @param  {...string} roles - Allowed roles
  */
 export const authorize = (...roles) => {
-    return (req, res, next) => {
+    return async (req, res, next) => {
         if (!req.user) {
             return res.status(401).json({
                 success: false,
@@ -109,6 +109,23 @@ export const authorize = (...roles) => {
         
         if (!roles.includes(req.user.role)) {
             logger.warn(`Authorization failed: User ${req.user.email} with role ${req.user.role} attempted to access ${req.path}`);
+            
+            // Log unauthorized access attempt
+            try {
+                const auditService = (await import('../services/audit.service.js')).default;
+                await auditService.logUnauthorizedAccess({
+                    userId: req.user.id,
+                    ipAddress: req.ip,
+                    userAgent: req.headers['user-agent'],
+                    path: req.path,
+                    method: req.method,
+                    resourceType: 'system',
+                    resourceId: null,
+                });
+            } catch (error) {
+                logger.error('Failed to log unauthorized access:', error);
+            }
+            
             return res.status(403).json({
                 success: false,
                 error: {
