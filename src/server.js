@@ -1,8 +1,6 @@
 import express from 'express';
 import { createServer } from 'http';
 import cookieParser from 'cookie-parser';
-import cors from 'cors';
-import helmet from 'helmet';
 import { configDotenv } from 'dotenv';
 
 import logger from './config/logger.js';
@@ -15,6 +13,15 @@ import loggerMiddleware from './middlewares/logger.middleware.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import { ipRateLimiter, userRateLimiter } from './middlewares/rate-limit.middleware.js';
 import { sanitizeNoSQL, sanitizeXSS, customSanitize } from './middlewares/sanitization.middleware.js';
+import {
+    configureHelmet,
+    configureCORS,
+    addSecurityHeaders,
+    detectSuspiciousActivity,
+    enforceHTTPS,
+    requestTimeout,
+    validateContentType,
+} from './middlewares/security.middleware.js';
 
 // Load environment variables
 configDotenv();
@@ -23,41 +30,39 @@ const app = express();
 const httpServer = createServer(app);
 const PORT = process.env.PORT || 5000;
 
-// Security middleware
-app.use(helmet());
+// Enforce HTTPS in production
+app.use(enforceHTTPS);
+
+// Security headers with Helmet.js
+app.use(configureHelmet());
+
+// Additional custom security headers
+app.use(addSecurityHeaders);
+
+// CORS configuration
+app.use(configureCORS());
+
+// Request timeout (30 seconds)
+app.use(requestTimeout(30000));
 
 // IP-based rate limiting for all API endpoints
 app.use('/api', ipRateLimiter);
-
-// CORS configuration
-const corsOptions = {
-    credentials: true,
-    origin: (origin, callback) => {
-        const allowedOrigins = process.env.FRONTEND_URL 
-            ? process.env.FRONTEND_URL.split(',') 
-            : ['http://localhost:3000'];
-        
-        // Allow requests with no origin (mobile apps, Postman, etc.)
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-};
-
-app.use(cors(corsOptions));
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
+// Validate Content-Type for POST/PUT requests
+app.use(validateContentType);
+
 // Data sanitization middleware
 app.use(sanitizeNoSQL); // Prevent NoSQL injection
 app.use(sanitizeXSS); // Prevent XSS attacks
 app.use(customSanitize); // Custom sanitization
+
+// Detect suspicious activity
+app.use(detectSuspiciousActivity);
 
 // Request logging middleware
 app.use(loggerMiddleware);
