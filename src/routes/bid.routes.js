@@ -8,6 +8,7 @@ import {
     getMyBids
 } from '../controllers/bid.controller.js';
 import { authenticate, authorize } from '../middlewares/auth.middleware.js';
+import { auditBidPattern, auditResourceAccess } from '../middlewares/audit.middleware.js';
 
 const router = express.Router();
 
@@ -51,6 +52,6 @@ router.get('/:id', getBidById);
  * @desc    Place a new bid on an auction
  * @access  Private (Authenticated users only)
  */
-router.post('/', authenticate, placeBid);
+router.post('/', authenticate, auditBidPattern, auditResourceAccess('BID_PLACE', 'bid'), placeBid);
 
 export default router;

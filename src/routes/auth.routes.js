@@ -9,6 +9,13 @@ import {
 import { authenticate } from '../middlewares/auth.middleware.js';
 import { strictRateLimiter } from '../middlewares/rate-limit.middleware.js';
 import { validate, authValidation } from '../middlewares/validation.middleware.js';
+import { 
+    auditAuthAttempt, 
+    auditRegistration, 
+    auditLogout,
+    checkAccountLockout,
+    checkSuspiciousIP
+} from '../middlewares/audit.middleware.js';
 
 const router = express.Router();
 
@@ -17,14 +24,14 @@ const router = express.Router();
  * @desc    Register a new user
  * @access  Public
  */
-router.post('/register', strictRateLimiter, validate(authValidation.register), register);
+router.post('/register', strictRateLimiter, checkSuspiciousIP, validate(authValidation.register), auditRegistration, register);
 
 /**
  * @route   POST /api/v1/auth/login
  * @desc    Login user
  * @access  Public
  */
-router.post('/login', strictRateLimiter, validate(authValidation.login), login);
+router.post('/login', strictRateLimiter, checkAccountLockout, checkSuspiciousIP, validate(authValidation.login), auditAuthAttempt, login);
 
 /**
  * @route   POST /api/v1/auth/refresh-token
@@ -45,6 +52,6 @@ router.get('/me', authenticate, getCurrentUser);
  * @desc    Logout user
  * @access  Private
  */
-router.post('/logout', authenticate, logout);
+router.post('/logout', authenticate, auditLogout, logout);
 
 export default router;
