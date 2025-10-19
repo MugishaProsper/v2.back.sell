@@ -76,12 +76,12 @@ import notificationRoutes from './routes/notification.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 
 app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/users', userRoutes);
-app.use('/api/v1/auctions', auctionRoutes);
-app.use('/api/v1/bids', bidRoutes);
+app.use('/api/v1/users', userRateLimiter, userRoutes);
+app.use('/api/v1/auctions', userRateLimiter, auctionRoutes);
+app.use('/api/v1/bids', userRateLimiter, bidRoutes);
 app.use('/api/v1/webhooks/ai', aiWebhookRoutes);
-app.use('/api/v1/notifications', notificationRoutes);
-app.use('/api/v1/analytics', analyticsRoutes);
+app.use('/api/v1/notifications', userRateLimiter, notificationRoutes);
+app.use('/api/v1/analytics', userRateLimiter, analyticsRoutes);
 
 // Initialize Socket.IO (will be set up in startServer)
 let io;
