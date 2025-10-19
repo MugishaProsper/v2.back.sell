@@ -3,7 +3,6 @@ import { createServer } from 'http';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
-import rateLimit from 'express-rate-limit';
 import { configDotenv } from 'dotenv';
 
 import logger from './config/logger.js';
@@ -14,6 +13,7 @@ import realtimeService from './services/realtime.service.js';
 import aiIntegrationService from './services/ai-integration.service.js';
 import loggerMiddleware from './middlewares/logger.middleware.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
+import { ipRateLimiter, userRateLimiter } from './middlewares/rate-limit.middleware.js';
 
 // Load environment variables
 configDotenv();
@@ -25,22 +25,8 @@ const PORT = process.env.PORT || 5000;
 // Security middleware
 app.use(helmet());
 
-// Rate limiting
-const limiter = rateLimit({
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 60000, // 1 minute
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // 100 requests per window
-    message: {
-        success: false,
-        error: {
-            code: 'RATE_LIMIT_EXCEEDED',
-            message: 'Too many requests, please try again later',
-        },
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-});
-
-app.use('/api', limiter);
+// IP-based rate limiting for all API endpoints
+app.use('/api', ipRateLimiter);
 
 // CORS configuration
 const corsOptions = {
