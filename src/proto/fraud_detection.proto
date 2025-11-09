@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package fraud;
+
+// Fraud Detection Service
+service FraudDetection {
+  // Analyze a bid for potential fraud
+  rpc AnalyzeBid (BidRequest) returns (FraudResponse);
+}
+
+// Request message for bid analysis
+message BidRequest {
+  string bid_id = 1;
+  string auction_id = 2;
+  string user_id = 3;
+  double amount = 4;
+  string timestamp = 5;
+  string ip_address = 6;
+  string user_agent = 7;
+  UserHistory user_history = 8;
+}
+
+// User bidding history
+message UserHistory {
+  int32 total_bids = 1;
+  int32 won_auctions = 2;
+  double average_bid_amount = 3;
+  int32 suspicious_activities = 4;
+}
+
+// Response message with fraud analysis
+message FraudResponse {
+  string bid_id = 1;
+  double risk_score = 2;
+  bool is_fraudulent = 3;
+  repeated string reasons = 4;
+  double confidence = 5;
+  string analyzed_at = 6;
+  string recommended_action = 7;
+}
