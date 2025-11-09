@@ -11,6 +11,7 @@ import { connectToDatabase } from './config/db.config.js';
 import { connectToRedis } from './config/redis.config.js';
 import { initializeSocketIO } from './config/socket.config.js';
 import realtimeService from './services/realtime.service.js';
+import aiIntegrationService from './services/ai-integration.service.js';
 import loggerMiddleware from './middlewares/logger.middleware.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 
@@ -84,11 +85,13 @@ import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import auctionRoutes from './routes/auction.routes.js';
 import bidRoutes from './routes/bid.routes.js';
+import aiWebhookRoutes from './routes/ai-webhook.routes.js';
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/auctions', auctionRoutes);
 app.use('/api/v1/bids', bidRoutes);
+app.use('/api/v1/webhooks/ai', aiWebhookRoutes);
 
 // Initialize Socket.IO (will be set up in startServer)
 let io;
@@ -116,6 +119,9 @@ const startServer = async () => {
         
         // Initialize realtime service with Socket.IO instance
         realtimeService.setIO(io);
+        
+        // Initialize AI integration service (gRPC client)
+        await aiIntegrationService.initializeGrpcClient();
         
         // Start listening
         httpServer.listen(PORT, () => {

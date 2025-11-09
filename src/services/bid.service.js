@@ -3,6 +3,7 @@ import auctionRepository from '../repositories/auction.repository.js';
 import userRepository from '../repositories/user.repository.js';
 import realtimeService from './realtime.service.js';
 import aiWebhookService from './ai-webhook.service.js';
+import aiIntegrationService from './ai-integration.service.js';
 import logger from '../config/logger.js';
 
 /**
@@ -65,6 +66,9 @@ class BidService {
                 throw new Error('BID_AMOUNT_MUST_BE_HIGHER_THAN_CURRENT_BID');
             }
 
+            // Get bidder info for fraud detection
+            const bidder = await userRepository.findById(bidderId);
+
             // Create bid
             const bid = await bidRepository.create({
                 auction: auctionId,
@@ -76,7 +80,19 @@ class BidService {
                     ipAddress: metadata.ipAddress || null,
                     userAgent: metadata.userAgent || null,
                     bidMethod
+                },
+                fraudAnalysis: {
+                    riskScore: 0,
+                    isFlagged: false,
+                    reasons: [],
+                    analyzedAt: null
                 }
+            });
+
+            // Perform fraud detection analysis (within 500ms requirement)
+            // Run asynchronously to not block bid placement
+            this.analyzeBidFraud(bid, bidder, metadata).catch(error => {
+                logger.error(`Fraud analysis failed for bid ${bid._id}:`, error.message);
             });
 
             // Mark previous active bids as outbid
@@ -119,7 +135,6 @@ class BidService {
 
             // Queue webhook to AI module for bid placement
             try {
-                const bidder = await userRepository.findById(bidderId);
                 await aiWebhookService.queueBidPlaced(populatedBid, updatedAuction, bidder);
             } catch (error) {
                 logger.error('Failed to queue bid-placed webhook:', error.message);
@@ -447,6 +462,76 @@ class BidService {
         } catch (error) {
             logger.error(`Error getting highest bid for auction ${auctionId}:`, error.message);
             throw error;
+        }
+    }
+
+    /**
+     * Analyze bid for fraud using AI module
+     * @param {Object} bid - Bid object
+     * @param {Object} bidder - Bidder user object
+     * @param {Object} metadata - Request metadata
+     * @returns {Promise<Object>} - Fraud analysis result
+     */
+    async analyzeBidFraud(bid, bidder, metadata = {}) {
+        try {
+            const startTime = Date.now();
+
+            // Prepare bid data for fraud analysis
+            const bidData = {
+                bidId: bid._id.toString(),
+                auctionId: bid.auction.toString(),
+                userId: bid.bidder.toString(),
+                amount: bid.amount,
+                timestamp: bid.timestamp.toISOString(),
+                ipAddress: metadata.ipAddress || bid.metadata?.ipAddress,
+                userAgent: metadata.userAgent || bid.metadata?.userAgent,
+                userHistory: {
+                    totalBids: bidder.stats?.totalBids || 0,
+                    wonAuctions: bidder.stats?.auctionsWon || 0,
+                    averageBidAmount: bidder.stats?.totalBids > 0 
+                        ? (bidder.stats?.totalSpent || 0) / bidder.stats.totalBids 
+                        : 0,
+                    suspiciousActivities: 0 // Could be tracked separately
+                }
+            };
+
+            // Call AI integration service for fraud detection
+            const fraudAnalysis = await aiIntegrationService.analyzeBidFraud(bidData);
+
+            const analysisTime = Date.now() - startTime;
+            logger.info(`Fraud analysis completed for bid ${bid._id} in ${analysisTime}ms`);
+
+            // Update bid with fraud analysis results
+            await bidRepository.update(bid._id, {
+                fraudAnalysis: {
+                    riskScore: fraudAnalysis.riskScore,
+                    isFlagged: fraudAnalysis.isFraudulent,
+                    reasons: fraudAnalysis.reasons || [],
+                    analyzedAt: new Date()
+                }
+            });
+
+            // If fraud is detected, emit alert
+            if (fraudAnalysis.isFraudulent) {
+                logger.warn(`Fraudulent bid detected: ${bid._id} with risk score ${fraudAnalysis.riskScore}`);
+                
+                // Emit fraud alert event
+                if (realtimeService.isInitialized()) {
+                    realtimeService.emitFraudAlert(bid.auction, bid, fraudAnalysis);
+                }
+            }
+
+            return fraudAnalysis;
+        } catch (error) {
+            logger.error(`Error analyzing bid fraud for ${bid._id}:`, error.message);
+            // Don't throw - fraud analysis failure shouldn't block bid placement
+            return {
+                bidId: bid._id.toString(),
+                riskScore: 0,
+                isFraudulent: false,
+                reasons: ['Analysis failed'],
+                error: error.message
+            };
         }
     }
 }
