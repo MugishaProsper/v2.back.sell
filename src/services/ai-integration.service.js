@@ -4,6 +4,7 @@ import protoLoader from '@grpc/proto-loader';
 import { configDotenv } from 'dotenv';
 import logger from '../config/logger.js';
 import { redisClient } from '../config/redis.config.js';
+import mockAIService from './mock-ai.service.js';
 
 configDotenv();
 
@@ -267,14 +268,106 @@ class AIIntegrationService {
      * Mock fraud detection for development/fallback
      */
     mockFraudDetection(bidData) {
-        return {
-            bidId: bidData.bidId,
-            riskScore: Math.random() * 0.3, // Low risk (0-0.3)
-            isFraudulent: false,
-            reasons: [],
-            confidence: 0.85,
-            analyzedAt: new Date().toISOString()
-        };
+        return mockAIService.detectFraud(bidData);
+    }
+
+    /**
+     * Get price prediction for auction
+     * @param {object} auctionData - Auction data
+     * @returns {Promise<object>} Price prediction
+     */
+    async getPricePrediction(auctionData) {
+        const cacheKey = `price:${auctionData.auctionId}`;
+        
+        // Check cache first
+        const cached = await this.getCachedResponse(cacheKey);
+        if (cached) return cached;
+        
+        if (this.useMockAI) {
+            logger.info('Using mock price prediction');
+            const mockResult = mockAIService.predictPrice(auctionData);
+            await this.cacheResponse(cacheKey, mockResult);
+            return mockResult;
+        }
+
+        try {
+            const result = await this.circuitBreaker.execute(async () => {
+                return await this.retryWithBackoff(async () => {
+                    const response = await axios.post(
+                        `${this.aiModuleUrl}/api/predict-price`,
+                        auctionData,
+                        {
+                            timeout: this.timeout,
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Webhook-Secret': process.env.AI_WEBHOOK_SECRET
+                            }
+                        }
+                    );
+                    return response.data;
+                });
+            });
+            
+            logger.info(`Price prediction completed for auction ${auctionData.auctionId}`);
+            await this.cacheResponse(cacheKey, result);
+            return result;
+        } catch (error) {
+            logger.error('Price prediction failed:', error.message);
+            logger.warn('Falling back to mock price prediction');
+            const mockResult = mockAIService.predictPrice(auctionData);
+            await this.cacheResponse(cacheKey, mockResult);
+            return mockResult;
+        }
+    }
+
+    /**
+     * Get personalized recommendations for user
+     * @param {object} userData - User data
+     * @param {array} availableAuctions - Available auctions
+     * @returns {Promise<object>} Recommendations
+     */
+    async getRecommendations(userData, availableAuctions = []) {
+        const cacheKey = `recommendations:${userData.userId}`;
+        
+        // Check cache first
+        const cached = await this.getCachedResponse(cacheKey);
+        if (cached) return cached;
+        
+        if (this.useMockAI) {
+            logger.info('Using mock recommendations');
+            const mockResult = mockAIService.getRecommendations(userData, availableAuctions);
+            await this.cacheResponse(cacheKey, mockResult);
+            return mockResult;
+        }
+
+        try {
+            const result = await this.circuitBreaker.execute(async () => {
+                return await this.retryWithBackoff(async () => {
+                    const response = await axios.post(
+                        `${this.aiModuleUrl}/api/recommendations`,
+                        { ...userData, availableAuctions: availableAuctions.map(a => a._id || a.id) },
+                        {
+                            timeout: this.timeout,
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-Webhook-Secret': process.env.AI_WEBHOOK_SECRET
+                            }
+                        }
+                    );
+                    return response.data;
+                });
+            });
+            
+            logger.info(`Recommendations generated for user ${userData.userId}`);
+            await this.cacheResponse(cacheKey, result);
+            return result;
+        } catch (error) {
+            logger.error('Recommendations failed:', error.message);
+            logger.warn('Falling back to mock recommendations');
+            const mockResult = mockAIService.getRecommendations(userData, availableAuctions);
+            await this.cacheResponse(cacheKey, mockResult);
+            return mockResult;
+        }
     }
 
     /**
