@@ -1,6 +1,7 @@
 import auctionRepository from '../repositories/auction.repository.js';
 import userRepository from '../repositories/user.repository.js';
 import realtimeService from './realtime.service.js';
+import aiWebhookService from './ai-webhook.service.js';
 import logger from '../config/logger.js';
 import Bull from 'bull';
 import { configDotenv } from 'dotenv';
@@ -112,6 +113,16 @@ class AuctionService {
             await userRepository.incrementStats(sellerId, { auctionsCreated: 1 });
 
             logger.info(`Auction created: ${createdAuction._id} by seller ${sellerId}`);
+
+            // Queue webhook to AI module for auction creation
+            if (createdAuction.status === 'active') {
+                try {
+                    await aiWebhookService.queueAuctionCreated(createdAuction);
+                } catch (error) {
+                    logger.error('Failed to queue auction-created webhook:', error.message);
+                    // Don't fail auction creation if webhook fails
+                }
+            }
 
             return createdAuction;
         } catch (error) {
@@ -517,10 +528,11 @@ class AuctionService {
             await auctionRepository.updateStatus(auctionId, 'closed');
 
             // If there's a highest bid, determine winner
+            let winningBid = null;
             if (auction.bidding.highestBid) {
                 // Import bidService dynamically to avoid circular dependency
                 const { default: bidService } = await import('./bid.service.js');
-                await bidService.determineWinner(auctionId);
+                winningBid = await bidService.determineWinner(auctionId);
                 logger.info(`Auction closed with winner: ${auctionId}`);
             } else {
                 logger.info(`Auction closed without bids: ${auctionId}`);
@@ -530,6 +542,15 @@ class AuctionService {
                     const closedAuction = await auctionRepository.findById(auctionId);
                     realtimeService.emitAuctionClosed(auctionId, closedAuction, null);
                 }
+            }
+
+            // Queue webhook to AI module for auction end
+            try {
+                const closedAuction = await auctionRepository.findById(auctionId);
+                await aiWebhookService.queueAuctionEnded(closedAuction, winningBid);
+            } catch (error) {
+                logger.error('Failed to queue auction-ended webhook:', error.message);
+                // Don't fail auction closure if webhook fails
             }
 
             logger.info(`Expired auction closed: ${auctionId}`);

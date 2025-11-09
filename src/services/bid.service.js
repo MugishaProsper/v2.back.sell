@@ -2,6 +2,7 @@ import bidRepository from '../repositories/bid.repository.js';
 import auctionRepository from '../repositories/auction.repository.js';
 import userRepository from '../repositories/user.repository.js';
 import realtimeService from './realtime.service.js';
+import aiWebhookService from './ai-webhook.service.js';
 import logger from '../config/logger.js';
 
 /**
@@ -114,6 +115,15 @@ class BidService {
                         populatedBid
                     );
                 }
+            }
+
+            // Queue webhook to AI module for bid placement
+            try {
+                const bidder = await userRepository.findById(bidderId);
+                await aiWebhookService.queueBidPlaced(populatedBid, updatedAuction, bidder);
+            } catch (error) {
+                logger.error('Failed to queue bid-placed webhook:', error.message);
+                // Don't fail bid placement if webhook fails
             }
 
             return {
