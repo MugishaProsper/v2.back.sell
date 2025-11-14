@@ -331,13 +331,16 @@ class AIIntegrationService {
         
         // Check cache first
         const cached = await this.getCachedResponse(cacheKey);
-        if (cached) return cached;
+        if (cached) {
+            logger.info(`Returning cached recommendations for user ${userData.userId}`);
+            return { ...cached, cached: true };
+        }
         
         if (this.useMockAI) {
             logger.info('Using mock recommendations');
             const mockResult = mockAIService.getRecommendations(userData, availableAuctions);
             await this.cacheResponse(cacheKey, mockResult);
-            return mockResult;
+            return { ...mockResult, cached: false, aiAvailable: true };
         }
 
         try {
@@ -360,13 +363,20 @@ class AIIntegrationService {
             
             logger.info(`Recommendations generated for user ${userData.userId}`);
             await this.cacheResponse(cacheKey, result);
-            return result;
+            return { ...result, cached: false, aiAvailable: true };
         } catch (error) {
             logger.error('Recommendations failed:', error.message);
+            
+            // If circuit breaker is open, return empty recommendations gracefully
+            if (this.circuitBreaker.getState() === 'OPEN') {
+                logger.warn('Circuit breaker is OPEN - returning empty recommendations');
+                return { auctions: [], scores: [], cached: false, aiAvailable: false };
+            }
+            
             logger.warn('Falling back to mock recommendations');
             const mockResult = mockAIService.getRecommendations(userData, availableAuctions);
             await this.cacheResponse(cacheKey, mockResult);
-            return mockResult;
+            return { ...mockResult, cached: false, aiAvailable: true };
         }
     }
 

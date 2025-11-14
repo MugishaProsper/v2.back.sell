@@ -137,12 +137,16 @@ class AuctionRepository {
      */
     async search(searchParams) {
         try {
+            const startTime = Date.now();
+            
             const {
                 query,
                 category,
                 minPrice,
                 maxPrice,
                 status,
+                endTimeBefore,
+                endTimeAfter,
                 page = 1,
                 limit = 10,
                 sortBy = 'relevance'
@@ -181,16 +185,29 @@ class AuctionRepository {
                 filter.status = status;
             }
 
+            // End time filter
+            if (endTimeBefore || endTimeAfter) {
+                filter['timing.endTime'] = {};
+                if (endTimeBefore) {
+                    filter['timing.endTime'].$lte = new Date(endTimeBefore);
+                }
+                if (endTimeAfter) {
+                    filter['timing.endTime'].$gte = new Date(endTimeAfter);
+                }
+            }
+
             // Build sort object
             let sort = {};
             switch (sortBy) {
                 case 'price_asc':
+                case 'price':
                     sort = { 'pricing.currentPrice': 1 };
                     break;
                 case 'price_desc':
                     sort = { 'pricing.currentPrice': -1 };
                     break;
                 case 'ending_soon':
+                case 'endTime':
                     sort = { 'timing.endTime': 1 };
                     break;
                 case 'newest':
@@ -225,6 +242,9 @@ class AuctionRepository {
                 Auction.countDocuments(filter)
             ]);
 
+            const duration = Date.now() - startTime;
+            logger.info(`Search completed in ${duration}ms - ${total} results found`);
+
             return {
                 auctions,
                 pagination: {
@@ -239,7 +259,13 @@ class AuctionRepository {
                     minPrice,
                     maxPrice,
                     status,
+                    endTimeBefore,
+                    endTimeAfter,
                     sortBy
+                },
+                performance: {
+                    duration,
+                    cached: false
                 }
             };
         } catch (error) {

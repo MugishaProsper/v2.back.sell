@@ -6,12 +6,20 @@ import {
     searchAuctions,
     updateAuction,
     deleteAuction,
-    uploadImages
+    uploadImages,
+    getRecommendations
 } from '../controllers/auction.controller.js';
 import { authenticate, authorize } from '../middlewares/auth.middleware.js';
 import { uploadMultiple, handleUploadError } from '../middlewares/upload.middleware.js';
 
 const router = express.Router();
+
+/**
+ * @route   GET /api/v1/auctions/recommendations
+ * @desc    Get AI-powered personalized recommendations
+ * @access  Private (Authenticated users)
+ */
+router.get('/recommendations', authenticate, getRecommendations);
 
 /**
  * @route   GET /api/v1/auctions/search

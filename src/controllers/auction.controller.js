@@ -1,4 +1,5 @@
 import auctionService from '../services/auction.service.js';
+import aiIntegrationService from '../services/ai-integration.service.js';
 import logger from '../config/logger.js';
 import { sanitizeInput } from '../utils/validation.js';
 
@@ -196,6 +197,8 @@ export const searchAuctions = async (req, res) => {
             minPrice,
             maxPrice,
             status,
+            endTimeBefore,
+            endTimeAfter,
             page = 1,
             limit = 10,
             sortBy = 'relevance'
@@ -207,6 +210,8 @@ export const searchAuctions = async (req, res) => {
             minPrice: minPrice ? parseFloat(minPrice) : undefined,
             maxPrice: maxPrice ? parseFloat(maxPrice) : undefined,
             status,
+            endTimeBefore,
+            endTimeAfter,
             page: parseInt(page),
             limit: parseInt(limit),
             sortBy
@@ -412,6 +417,117 @@ export const uploadImages = async (req, res) => {
             error: {
                 code: 'INTERNAL_SERVER_ERROR',
                 message: 'An error occurred while uploading images',
+                timestamp: new Date().toISOString(),
+                path: req.path
+            }
+        });
+    }
+};
+
+/**
+ * Get AI-powered recommendations for user
+ * GET /api/v1/auctions/recommendations
+ */
+export const getRecommendations = async (req, res) => {
+    try {
+        const startTime = Date.now();
+        const userId = req.user?.id;
+
+        if (!userId) {
+            return res.status(401).json({
+                success: false,
+                error: {
+                    code: 'AUTHENTICATION_REQUIRED',
+                    message: 'Authentication required for personalized recommendations',
+                    timestamp: new Date().toISOString(),
+                    path: req.path
+                }
+            });
+        }
+
+        // Get active auctions for recommendations
+        const activeAuctions = await auctionService.listAuctions({
+            status: 'active',
+            limit: 100
+        });
+
+        // Prepare user data for AI module
+        const userData = {
+            userId,
+            preferences: req.user.notificationPreferences,
+            stats: req.user.stats
+        };
+
+        // Get recommendations from AI module
+        const recommendations = await aiIntegrationService.getRecommendations(
+            userData,
+            activeAuctions.auctions
+        );
+
+        const duration = Date.now() - startTime;
+
+        // Ensure response time is within 3 seconds requirement
+        if (duration > 3000) {
+            logger.warn(`Recommendations took ${duration}ms - exceeds 3 second requirement`);
+        }
+
+        // Fetch full auction details for recommended IDs
+        let recommendedAuctions = [];
+        if (recommendations.auctions && recommendations.auctions.length > 0) {
+            recommendedAuctions = await Promise.all(
+                recommendations.auctions.slice(0, 10).map(async (auctionId) => {
+                    try {
+                        return await auctionService.getAuctionById(auctionId);
+                    } catch (error) {
+                        logger.error(`Failed to fetch recommended auction ${auctionId}:`, error.message);
+                        return null;
+                    }
+                })
+            );
+            // Filter out null values
+            recommendedAuctions = recommendedAuctions.filter(a => a !== null);
+        }
+
+        res.status(200).json({
+            success: true,
+            data: {
+                recommendations: recommendedAuctions,
+                scores: recommendations.scores || [],
+                metadata: {
+                    totalRecommendations: recommendedAuctions.length,
+                    aiAvailable: recommendations.aiAvailable !== false,
+                    cached: recommendations.cached || false
+                }
+            },
+            performance: {
+                duration,
+                withinSLA: duration <= 3000
+            }
+        });
+    } catch (error) {
+        logger.error('Get recommendations controller error:', error);
+
+        // Handle AI service unavailability gracefully
+        if (error.message.includes('Circuit breaker') || error.message.includes('AI module unavailable')) {
+            return res.status(200).json({
+                success: true,
+                data: {
+                    recommendations: [],
+                    scores: [],
+                    metadata: {
+                        totalRecommendations: 0,
+                        aiAvailable: false,
+                        message: 'AI recommendations temporarily unavailable'
+                    }
+                }
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            error: {
+                code: 'INTERNAL_SERVER_ERROR',
+                message: 'An error occurred while fetching recommendations',
                 timestamp: new Date().toISOString(),
                 path: req.path
             }
