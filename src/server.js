@@ -83,10 +83,12 @@ app.get('/health', (_req, res) => {
 import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import auctionRoutes from './routes/auction.routes.js';
+import bidRoutes from './routes/bid.routes.js';
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/auctions', auctionRoutes);
+app.use('/api/v1/bids', bidRoutes);
 
 // Initialize Socket.IO (will be set up in startServer)
 let io;
