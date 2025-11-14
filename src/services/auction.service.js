@@ -4,6 +4,7 @@ import realtimeService from './realtime.service.js';
 import aiWebhookService from './ai-webhook.service.js';
 import notificationEventService from './notification-event.service.js';
 import bidRepository from '../repositories/bid.repository.js';
+import cacheService from './cache.service.js';
 import logger from '../config/logger.js';
 import Bull from 'bull';
 import { configDotenv } from 'dotenv';
@@ -116,6 +117,9 @@ class AuctionService {
 
             logger.info(`Auction created: ${createdAuction._id} by seller ${sellerId}`);
 
+            // Invalidate search cache since new auction was created
+            await cacheService.invalidateSearchCache();
+
             // Queue webhook to AI module for auction creation
             if (createdAuction.status === 'active') {
                 try {
@@ -207,6 +211,9 @@ class AuctionService {
 
             logger.info(`Auction updated: ${auctionId}`);
 
+            // Invalidate auction-related caches
+            await cacheService.invalidateAuctionCache(auctionId);
+
             // Emit auction update event
             if (realtimeService.isInitialized()) {
                 realtimeService.emitAuctionUpdate(auctionId, updatedAuction, 'details');
@@ -251,6 +258,9 @@ class AuctionService {
 
             // Decrement seller's auction count
             await userRepository.incrementStats(userId, { auctionsCreated: -1 });
+
+            // Invalidate auction-related caches
+            await cacheService.invalidateAuctionCache(auctionId);
 
             logger.info(`Auction deleted: ${auctionId}`);
 
@@ -334,13 +344,34 @@ class AuctionService {
     }
 
     /**
-     * Search auctions
+     * Search auctions with caching
      * @param {Object} searchParams - Search parameters
      * @returns {Promise<Object>} - Search results
      */
     async searchAuctions(searchParams) {
         try {
+            // Generate cache key from search parameters
+            const cacheKey = cacheService.generateSearchKey(searchParams);
+            
+            // Try to get from cache first
+            const cached = await cacheService.get(cacheKey);
+            if (cached) {
+                logger.info('Returning cached search results');
+                return {
+                    ...cached,
+                    performance: {
+                        ...cached.performance,
+                        cached: true
+                    }
+                };
+            }
+            
+            // If not in cache, fetch from database
             const result = await auctionRepository.search(searchParams);
+            
+            // Cache the result with 5 minute TTL
+            await cacheService.set(cacheKey, result, 300);
+            
             return result;
         } catch (error) {
             logger.error('Error searching auctions:', error.message);
@@ -385,6 +416,9 @@ class AuctionService {
             }
 
             logger.info(`Auction status updated: ${auctionId} to ${newStatus}`);
+
+            // Invalidate auction-related caches
+            await cacheService.invalidateAuctionCache(auctionId);
 
             // Emit auction update event
             if (realtimeService.isInitialized()) {

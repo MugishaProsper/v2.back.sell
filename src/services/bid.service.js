@@ -5,6 +5,7 @@ import realtimeService from './realtime.service.js';
 import aiWebhookService from './ai-webhook.service.js';
 import aiIntegrationService from './ai-integration.service.js';
 import notificationEventService from './notification-event.service.js';
+import cacheService from './cache.service.js';
 import logger from '../config/logger.js';
 
 /**
@@ -108,6 +109,9 @@ class BidService {
 
             // Increment user's bid count
             await userRepository.incrementStats(bidderId, { totalBids: 1 });
+
+            // Invalidate auction-related caches since price changed
+            await cacheService.invalidateAuctionCache(auctionId);
 
             logger.info(`Bid placed: ${bid._id} on auction ${auctionId} by bidder ${bidderId}`);
 

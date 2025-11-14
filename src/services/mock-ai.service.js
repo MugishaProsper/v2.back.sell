@@ -104,7 +104,8 @@ class MockAIService {
         
         // Simple mock logic: recommend random auctions with scores
         const numRecommendations = Math.min(10, availableAuctions.length);
-        const recommendations = [];
+        const auctionIds = [];
+        const scores = [];
         
         if (availableAuctions.length > 0) {
             // Shuffle and take first N auctions
@@ -112,38 +113,27 @@ class MockAIService {
             
             for (let i = 0; i < numRecommendations; i++) {
                 const auction = shuffled[i];
-                recommendations.push({
-                    auctionId: auction._id || auction.id,
-                    score: 0.6 + Math.random() * 0.4, // 0.6 - 1.0
-                    reasons: [
-                        'Based on your bidding history',
-                        'Popular in your category',
-                        'Similar to items you viewed'
-                    ].slice(0, Math.floor(Math.random() * 3) + 1)
-                });
+                const score = 0.6 + Math.random() * 0.4; // 0.6 - 1.0
+                auctionIds.push(auction._id || auction.id);
+                scores.push(Math.round(score * 100) / 100);
             }
         } else {
             // Generate mock auction IDs if no auctions provided
             for (let i = 0; i < 5; i++) {
-                recommendations.push({
-                    auctionId: `mock-auction-${i + 1}`,
-                    score: 0.6 + Math.random() * 0.4,
-                    reasons: ['Based on your profile', 'Trending item']
-                });
+                auctionIds.push(`mock-auction-${i + 1}`);
+                scores.push(Math.round((0.6 + Math.random() * 0.4) * 100) / 100);
             }
         }
         
-        // Sort by score descending
-        recommendations.sort((a, b) => b.score - a.score);
-        
         const result = {
+            auctions: auctionIds,
+            scores,
             userId,
-            recommendations,
             generatedAt: new Date().toISOString(),
             algorithm: 'mock-collaborative-filtering'
         };
         
-        logger.debug(`Mock recommendations generated for user ${userId}: ${recommendations.length} items`);
+        logger.debug(`Mock recommendations generated for user ${userId}: ${auctionIds.length} items`);
         return result;
     }
 
