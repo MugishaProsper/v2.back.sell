@@ -1,6 +1,7 @@
 import bidRepository from '../repositories/bid.repository.js';
 import auctionRepository from '../repositories/auction.repository.js';
 import userRepository from '../repositories/user.repository.js';
+import realtimeService from './realtime.service.js';
 import logger from '../config/logger.js';
 
 /**
@@ -94,6 +95,26 @@ class BidService {
 
             // Return bid with populated fields
             const populatedBid = await bidRepository.findById(bid._id, ['bidder', 'auction']);
+
+            // Emit real-time events (within 1 second requirement)
+            if (realtimeService.isInitialized()) {
+                // Emit new bid event to auction room
+                realtimeService.emitNewBid(auctionId, populatedBid, updatedAuction);
+                
+                // Emit new bid notification to seller
+                realtimeService.emitNewBidToSeller(auction.seller, updatedAuction, populatedBid);
+                
+                // If there was a previous highest bidder, notify them they were outbid
+                if (currentHighestBid && currentHighestBid.bidder) {
+                    const previousBidderId = currentHighestBid.bidder._id || currentHighestBid.bidder;
+                    realtimeService.emitOutbidNotification(
+                        previousBidderId,
+                        updatedAuction,
+                        currentHighestBid,
+                        populatedBid
+                    );
+                }
+            }
 
             return {
                 bid: populatedBid,
@@ -220,6 +241,11 @@ class BidService {
 
             logger.info(`Bid status updated: ${bidId} to ${newStatus}`);
 
+            // Emit bid update event
+            if (realtimeService.isInitialized()) {
+                realtimeService.emitBidUpdate(bid.auction, updatedBid);
+            }
+
             return updatedBid;
         } catch (error) {
             logger.error(`Error updating bid status ${bidId}:`, error.message);
@@ -296,12 +322,19 @@ class BidService {
 
             logger.info(`Winner determined for auction ${auctionId}: ${winningBid.bidder}`);
 
-            return {
+            const winnerData = {
                 hasWinner: true,
                 winner: winningBid.bidder,
                 winningBid: winningBid,
                 finalPrice: winningBid.amount
             };
+
+            // Emit auction closed event with winner
+            if (realtimeService.isInitialized()) {
+                realtimeService.emitAuctionClosed(auctionId, auction, winnerData);
+            }
+
+            return winnerData;
         } catch (error) {
             logger.error(`Error determining winner for auction ${auctionId}:`, error.message);
             throw error;

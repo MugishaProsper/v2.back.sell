@@ -112,6 +112,9 @@ const startServer = async () => {
         // Make io available globally for services
         app.set('io', io);
         
+        // Initialize realtime service with Socket.IO instance
+        realtimeService.setIO(io);
+        
         // Start listening
         httpServer.listen(PORT, () => {
             logger.info(`Server is running on port ${PORT} in ${process.env.NODE_ENV} mode`);

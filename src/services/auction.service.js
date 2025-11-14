@@ -1,5 +1,6 @@
 import auctionRepository from '../repositories/auction.repository.js';
 import userRepository from '../repositories/user.repository.js';
+import realtimeService from './realtime.service.js';
 import logger from '../config/logger.js';
 import Bull from 'bull';
 import { configDotenv } from 'dotenv';
@@ -193,6 +194,11 @@ class AuctionService {
 
             logger.info(`Auction updated: ${auctionId}`);
 
+            // Emit auction update event
+            if (realtimeService.isInitialized()) {
+                realtimeService.emitAuctionUpdate(auctionId, updatedAuction, 'details');
+            }
+
             return updatedAuction;
         } catch (error) {
             logger.error(`Error updating auction ${auctionId}:`, error.message);
@@ -367,6 +373,11 @@ class AuctionService {
 
             logger.info(`Auction status updated: ${auctionId} to ${newStatus}`);
 
+            // Emit auction update event
+            if (realtimeService.isInitialized()) {
+                realtimeService.emitAuctionUpdate(auctionId, updatedAuction, 'status');
+            }
+
             return updatedAuction;
         } catch (error) {
             logger.error(`Error updating auction status ${auctionId}:`, error.message);
@@ -505,13 +516,20 @@ class AuctionService {
             // Update status to closed
             await auctionRepository.updateStatus(auctionId, 'closed');
 
-            // If there's a highest bid, set the winner
+            // If there's a highest bid, determine winner
             if (auction.bidding.highestBid) {
-                // Get the highest bid to find the bidder
-                // This will be implemented when Bid model is available
+                // Import bidService dynamically to avoid circular dependency
+                const { default: bidService } = await import('./bid.service.js');
+                await bidService.determineWinner(auctionId);
                 logger.info(`Auction closed with winner: ${auctionId}`);
             } else {
                 logger.info(`Auction closed without bids: ${auctionId}`);
+                
+                // Emit auction closed event without winner
+                if (realtimeService.isInitialized()) {
+                    const closedAuction = await auctionRepository.findById(auctionId);
+                    realtimeService.emitAuctionClosed(auctionId, closedAuction, null);
+                }
             }
 
             logger.info(`Expired auction closed: ${auctionId}`);
