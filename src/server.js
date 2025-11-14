@@ -75,10 +75,10 @@ app.get('/health', (req, res) => {
     });
 });
 
-// API routes will be added here
-// app.use('/api/v1/auth', authRoutes);
-// app.use('/api/v1/users', userRoutes);
-// etc.
+// API routes
+import authRoutes from './routes/auth.routes.js';
+
+app.use('/api/v1/auth', authRoutes);
 
 // 404 handler
 app.use(notFoundHandler);
