@@ -326,6 +326,39 @@ class RealtimeService {
     }
 
     /**
+     * Emit notification to user
+     * @param {string} userId - User ID
+     * @param {Object} notification - Notification object
+     */
+    emitNotification(userId, notification) {
+        try {
+            if (!this.io) {
+                logger.warn('Socket.IO not initialized, cannot emit notification');
+                return;
+            }
+
+            const eventData = {
+                notification: {
+                    id: notification._id,
+                    type: notification.type,
+                    title: notification.title,
+                    message: notification.message,
+                    data: notification.data,
+                    priority: notification.priority,
+                    createdAt: notification.createdAt
+                },
+                timestamp: new Date().toISOString()
+            };
+
+            emitToUser(this.io, userId.toString(), 'notification:new', eventData);
+            
+            logger.info(`Notification emitted to user ${userId}`);
+        } catch (error) {
+            logger.error('Error emitting notification:', error.message);
+        }
+    }
+
+    /**
      * Check if Socket.IO is initialized
      * @returns {boolean} - True if initialized
      */

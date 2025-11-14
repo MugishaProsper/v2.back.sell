@@ -2,6 +2,8 @@ import auctionRepository from '../repositories/auction.repository.js';
 import userRepository from '../repositories/user.repository.js';
 import realtimeService from './realtime.service.js';
 import aiWebhookService from './ai-webhook.service.js';
+import notificationEventService from './notification-event.service.js';
+import bidRepository from '../repositories/bid.repository.js';
 import logger from '../config/logger.js';
 import Bull from 'bull';
 import { configDotenv } from 'dotenv';
@@ -529,11 +531,22 @@ class AuctionService {
 
             // If there's a highest bid, determine winner
             let winningBid = null;
+            let winner = null;
             if (auction.bidding.highestBid) {
                 // Import bidService dynamically to avoid circular dependency
                 const { default: bidService } = await import('./bid.service.js');
                 winningBid = await bidService.determineWinner(auctionId);
+                winner = winningBid ? winningBid.bidder : null;
                 logger.info(`Auction closed with winner: ${auctionId}`);
+                
+                // Send notification to winner (within 1 minute requirement)
+                if (winningBid && winner) {
+                    notificationEventService.notifyAuctionWinner(
+                        winner._id || winner,
+                        auction,
+                        winningBid
+                    ).catch(err => logger.error('Failed to send winner notification:', err.message));
+                }
             } else {
                 logger.info(`Auction closed without bids: ${auctionId}`);
                 
@@ -542,6 +555,27 @@ class AuctionService {
                     const closedAuction = await auctionRepository.findById(auctionId);
                     realtimeService.emitAuctionClosed(auctionId, closedAuction, null);
                 }
+            }
+
+            // Send notification to seller (within 1 minute requirement)
+            notificationEventService.notifySellerAuctionEnded(
+                auction.seller,
+                auction,
+                winner ? { name: winner.profile?.firstName || 'Winner', amount: winningBid.amount } : null
+            ).catch(err => logger.error('Failed to send seller auction ended notification:', err.message));
+
+            // Get all unique bidders and notify them (within 1 minute requirement)
+            const allBids = await bidRepository.findByAuction(auctionId, { page: 1, limit: 1000 });
+            const uniqueBidderIds = [...new Set(allBids.bids.map(bid => 
+                (bid.bidder._id || bid.bidder).toString()
+            ))];
+            
+            if (uniqueBidderIds.length > 0) {
+                notificationEventService.notifyBiddersAuctionEnded(
+                    uniqueBidderIds,
+                    auction,
+                    winner ? (winner._id || winner).toString() : null
+                ).catch(err => logger.error('Failed to send bidders auction ended notifications:', err.message));
             }
 
             // Queue webhook to AI module for auction end

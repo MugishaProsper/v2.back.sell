@@ -4,6 +4,7 @@ import userRepository from '../repositories/user.repository.js';
 import realtimeService from './realtime.service.js';
 import aiWebhookService from './ai-webhook.service.js';
 import aiIntegrationService from './ai-integration.service.js';
+import notificationEventService from './notification-event.service.js';
 import logger from '../config/logger.js';
 
 /**
@@ -130,8 +131,23 @@ class BidService {
                         currentHighestBid,
                         populatedBid
                     );
+                    
+                    // Send outbid notification (within 30 seconds requirement)
+                    notificationEventService.notifyUserOutbid(
+                        previousBidderId,
+                        updatedAuction,
+                        currentHighestBid,
+                        populatedBid
+                    ).catch(err => logger.error('Failed to send outbid notification:', err.message));
                 }
             }
+
+            // Send new bid notification to seller (within 30 seconds requirement)
+            notificationEventService.notifySellerNewBid(
+                auction.seller,
+                updatedAuction,
+                populatedBid
+            ).catch(err => logger.error('Failed to send new bid notification to seller:', err.message));
 
             // Queue webhook to AI module for bid placement
             try {
