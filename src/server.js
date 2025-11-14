@@ -87,6 +87,7 @@ import auctionRoutes from './routes/auction.routes.js';
 import bidRoutes from './routes/bid.routes.js';
 import aiWebhookRoutes from './routes/ai-webhook.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
+import analyticsRoutes from './routes/analytics.routes.js';
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
@@ -94,6 +95,7 @@ app.use('/api/v1/auctions', auctionRoutes);
 app.use('/api/v1/bids', bidRoutes);
 app.use('/api/v1/webhooks/ai', aiWebhookRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/analytics', analyticsRoutes);
 
 // Initialize Socket.IO (will be set up in startServer)
 let io;
@@ -124,6 +126,10 @@ const startServer = async () => {
         
         // Initialize AI integration service (gRPC client)
         await aiIntegrationService.initializeGrpcClient();
+        
+        // Initialize analytics service (scheduled jobs)
+        await import('./services/analytics.service.js');
+        logger.info('Analytics service initialized');
         
         // Initialize email worker for notification processing
         await import('./workers/email.worker.js');
