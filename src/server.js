@@ -1,4 +1,5 @@
 import express from 'express';
+import { createServer } from 'http';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -8,6 +9,8 @@ import { configDotenv } from 'dotenv';
 import logger from './config/logger.js';
 import { connectToDatabase } from './config/db.config.js';
 import { connectToRedis } from './config/redis.config.js';
+import { initializeSocketIO } from './config/socket.config.js';
+import realtimeService from './services/realtime.service.js';
 import loggerMiddleware from './middlewares/logger.middleware.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 
@@ -15,6 +18,7 @@ import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js
 configDotenv();
 
 const app = express();
+const httpServer = createServer(app);
 const PORT = process.env.PORT || 5000;
 
 // Security middleware
@@ -66,7 +70,7 @@ app.use(cookieParser());
 app.use(loggerMiddleware);
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
     res.status(200).json({
         success: true,
         message: 'API is running',
@@ -84,6 +88,9 @@ app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/auctions', auctionRoutes);
 
+// Initialize Socket.IO (will be set up in startServer)
+let io;
+
 // 404 handler
 app.use(notFoundHandler);
 
@@ -99,10 +106,17 @@ const startServer = async () => {
         // Connect to Redis
         await connectToRedis();
         
+        // Initialize Socket.IO
+        io = await initializeSocketIO(httpServer);
+        
+        // Make io available globally for services
+        app.set('io', io);
+        
         // Start listening
-        app.listen(PORT, () => {
+        httpServer.listen(PORT, () => {
             logger.info(`Server is running on port ${PORT} in ${process.env.NODE_ENV} mode`);
             logger.info(`Health check available at http://localhost:${PORT}/health`);
+            logger.info(`Socket.IO server ready for connections`);
         });
     } catch (error) {
         logger.error('Failed to start server:', error);
@@ -123,3 +137,6 @@ process.on('uncaughtException', (err) => {
 });
 
 startServer();
+
+// Export io for use in other modules
+export { io };
