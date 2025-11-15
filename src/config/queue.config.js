@@ -28,24 +28,65 @@ export const createQueue = (name, options = {}) => {
                 type: 'exponential',
                 delay: 2000
             },
-            removeOnComplete: true,
-            removeOnFail: false,
+            removeOnComplete: {
+                age: 3600, // Keep completed jobs for 1 hour
+                count: 1000 // Keep last 1000 completed jobs
+            },
+            removeOnFail: {
+                age: 86400 // Keep failed jobs for 24 hours
+            },
             ...options.defaultJobOptions
+        },
+        settings: {
+            stalledInterval: 30000, // Check for stalled jobs every 30 seconds
+            maxStalledCount: 2, // Max number of times a job can be recovered from stalled state
+            ...options.settings
         },
         ...options
     });
 
-    // Queue event listeners
+    // Queue event listeners for monitoring and debugging
     queue.on('error', (error) => {
         logger.error(`Queue ${name} error:`, error);
     });
 
     queue.on('failed', (job, err) => {
-        logger.error(`Job ${job.id} in queue ${name} failed:`, err.message);
+        logger.error(`Job ${job.id} in queue ${name} failed after ${job.attemptsMade} attempts:`, {
+            error: err.message,
+            stack: err.stack,
+            jobData: job.data,
+            failedReason: job.failedReason
+        });
     });
 
-    queue.on('completed', (job) => {
-        logger.debug(`Job ${job.id} in queue ${name} completed`);
+    queue.on('completed', (job, result) => {
+        logger.debug(`Job ${job.id} in queue ${name} completed`, {
+            duration: job.finishedOn - job.processedOn,
+            attempts: job.attemptsMade
+        });
+    });
+
+    queue.on('stalled', (job) => {
+        logger.warn(`Job ${job.id} in queue ${name} stalled`, {
+            attemptsMade: job.attemptsMade,
+            data: job.data
+        });
+    });
+
+    queue.on('progress', (job, progress) => {
+        logger.debug(`Job ${job.id} in queue ${name} progress: ${progress}%`);
+    });
+
+    queue.on('active', (job) => {
+        logger.debug(`Job ${job.id} in queue ${name} started processing`);
+    });
+
+    queue.on('waiting', (jobId) => {
+        logger.debug(`Job ${jobId} in queue ${name} is waiting`);
+    });
+
+    queue.on('removed', (job) => {
+        logger.debug(`Job ${job.id} in queue ${name} removed`);
     });
 
     logger.info(`Queue ${name} initialized`);

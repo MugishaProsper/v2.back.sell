@@ -131,17 +131,14 @@ const startServer = async () => {
         logger.info('Analytics service initialized');
         
         // Initialize all background workers
-        await import('./workers/email.worker.js');
-        logger.info('Email worker initialized');
+        const { initializeWorkers } = await import('./workers/index.js');
+        initializeWorkers();
+        logger.info('All background workers initialized');
         
-        await import('./workers/ai-webhook.worker.js');
-        logger.info('AI webhook worker initialized');
-        
-        await import('./workers/auction-expiration.worker.js');
-        logger.info('Auction expiration worker initialized');
-        
-        await import('./workers/analytics.worker.js');
-        logger.info('Analytics worker initialized');
+        // Initialize scheduled jobs
+        const { initializeScheduledJobs } = await import('./workers/scheduler.js');
+        await initializeScheduledJobs();
+        logger.info('Scheduled jobs initialized');
         
         // Start listening
         httpServer.listen(PORT, () => {
@@ -155,16 +152,60 @@ const startServer = async () => {
     }
 };
 
+// Graceful shutdown handler
+const gracefulShutdown = async (signal) => {
+    logger.info(`${signal} received. Starting graceful shutdown...`);
+    
+    try {
+        // Stop accepting new connections
+        httpServer.close(() => {
+            logger.info('HTTP server closed');
+        });
+        
+        // Close Socket.IO connections
+        if (io) {
+            io.close(() => {
+                logger.info('Socket.IO server closed');
+            });
+        }
+        
+        // Shutdown workers
+        const { shutdownWorkers } = await import('./workers/index.js');
+        await shutdownWorkers();
+        
+        // Close database connection
+        const mongoose = await import('mongoose');
+        await mongoose.default.connection.close();
+        logger.info('Database connection closed');
+        
+        // Close Redis connections
+        const { redisClient, redisQueueClient } = await import('./config/redis.config.js');
+        await redisClient.quit();
+        await redisQueueClient.quit();
+        logger.info('Redis connections closed');
+        
+        logger.info('Graceful shutdown completed');
+        process.exit(0);
+    } catch (error) {
+        logger.error('Error during graceful shutdown:', error);
+        process.exit(1);
+    }
+};
+
+// Handle shutdown signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (err) => {
     logger.error('Unhandled Promise Rejection:', err);
-    process.exit(1);
+    gracefulShutdown('unhandledRejection');
 });
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (err) => {
     logger.error('Uncaught Exception:', err);
-    process.exit(1);
+    gracefulShutdown('uncaughtException');
 });
 
 startServer();

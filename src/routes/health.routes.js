@@ -60,4 +60,54 @@ router.get('/detailed', async (req, res) => {
             await redisClient.ping();
             redisStatus = 'connected';
         } catch (error) {
-            logger.error('Redis health check failed:', error)
+            logger.error('Redis health check failed:', error);
+        }
+        
+        // Check AI Integration Service
+        let aiStatus = 'unknown';
+        try {
+            const aiHealth = await aiIntegrationService.healthCheck();
+            aiStatus = aiHealth.status || 'connected';
+        } catch (error) {
+            logger.error('AI service health check failed:', error);
+            aiStatus = 'disconnected';
+        }
+        
+        // Check Queue Manager
+        let queueStatus = 'unknown';
+        try {
+            queueStatus = queueManager.getStatus();
+        } catch (error) {
+            logger.error('Queue manager health check failed:', error);
+            queueStatus = 'error';
+        }
+        
+        const executionTime = Date.now() - startTime;
+        
+        const detailedHealth = {
+            status: dbStatus === 'connected' && redisStatus === 'connected' ? 'healthy' : 'degraded',
+            timestamp: new Date().toISOString(),
+            uptime: process.uptime(),
+            environment: process.env.NODE_ENV || 'development',
+            responseTime: `${executionTime}ms`,
+            services: {
+                database: dbDetails,
+                redis: { status: redisStatus },
+                ai: { status: aiStatus },
+                queue: { status: queueStatus }
+            }
+        };
+        
+        const statusCode = detailedHealth.status === 'healthy' ? 200 : 503;
+        res.status(statusCode).json(detailedHealth);
+    } catch (error) {
+        logger.error('Detailed health check error:', error);
+        res.status(503).json({
+            status: 'unhealthy',
+            timestamp: new Date().toISOString(),
+            error: error.message
+        });
+    }
+});
+
+export default router;

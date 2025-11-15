@@ -16,21 +16,13 @@ export const connectToDatabase = async () => {
         await mongoose.connect(process.env.MONGO_URI, mongoOptions);
         logger.info(`Connected to MongoDB with connection pool (min: ${mongoOptions.minPoolSize}, max: ${mongoOptions.maxPoolSize})`);
         
-        // Enable slow query logging (queries > 3 seconds)
-        mongoose.set('debug', (collectionName, method, query, doc, options) => {
-            const startTime = Date.now();
-            
-            // Log query execution time
-            setImmediate(() => {
-                const executionTime = Date.now() - startTime;
-                if (executionTime > 3000) {
-                    logger.warn(`Slow query detected (${executionTime}ms): ${collectionName}.${method}`, {
-                        query: JSON.stringify(query),
-                        options: JSON.stringify(options)
-                    });
-                }
-            });
-        });
+        // Enable query logging in development
+        if (process.env.NODE_ENV === 'development') {
+            mongoose.set('debug', true);
+        }
+        
+        // Set up query performance monitoring
+        setupQueryMonitoring();
         
         mongoose.connection.on('error', (err) => {
             logger.error('MongoDB connection error:', err);
@@ -46,5 +38,106 @@ export const connectToDatabase = async () => {
     } catch (error) {
         logger.error("Error connecting to database:", error.message);
         process.exit(1);
+    }
+};
+
+/**
+ * Set up query performance monitoring
+ * Logs slow queries (> 3 seconds) for optimization
+ */
+const setupQueryMonitoring = () => {
+    // Track query execution times
+    const queryTimes = new Map();
+    
+    // Monitor query start
+    mongoose.plugin((schema) => {
+        schema.pre(/^find/, function() {
+            this._startTime = Date.now();
+        });
+        
+        schema.pre('save', function() {
+            this._startTime = Date.now();
+        });
+        
+        schema.pre('updateOne', function() {
+            this._startTime = Date.now();
+        });
+        
+        schema.pre('updateMany', function() {
+            this._startTime = Date.now();
+        });
+        
+        schema.pre('deleteOne', function() {
+            this._startTime = Date.now();
+        });
+        
+        schema.pre('deleteMany', function() {
+            this._startTime = Date.now();
+        });
+        
+        schema.pre('aggregate', function() {
+            this._startTime = Date.now();
+        });
+        
+        // Monitor query end
+        schema.post(/^find/, function(docs) {
+            logQueryTime(this, 'find');
+        });
+        
+        schema.post('save', function(doc) {
+            logQueryTime(this, 'save');
+        });
+        
+        schema.post('updateOne', function(result) {
+            logQueryTime(this, 'updateOne');
+        });
+        
+        schema.post('updateMany', function(result) {
+            logQueryTime(this, 'updateMany');
+        });
+        
+        schema.post('deleteOne', function(result) {
+            logQueryTime(this, 'deleteOne');
+        });
+        
+        schema.post('deleteMany', function(result) {
+            logQueryTime(this, 'deleteMany');
+        });
+        
+        schema.post('aggregate', function(result) {
+            logQueryTime(this, 'aggregate');
+        });
+    });
+    
+    logger.info('Query performance monitoring enabled');
+};
+
+/**
+ * Log query execution time if it exceeds threshold
+ * @param {Object} query - Mongoose query object
+ * @param {string} operation - Operation type
+ */
+const logQueryTime = (query, operation) => {
+    if (query._startTime) {
+        const executionTime = Date.now() - query._startTime;
+        
+        // Log slow queries (> 3 seconds)
+        if (executionTime > 3000) {
+            const modelName = query.model?.modelName || query.constructor?.modelName || 'Unknown';
+            const conditions = JSON.stringify(query.getQuery?.() || query._conditions || {});
+            const options = JSON.stringify(query.getOptions?.() || {});
+            
+            logger.warn(`Slow query detected (${executionTime}ms)`, {
+                model: modelName,
+                operation,
+                conditions,
+                options,
+                executionTime: `${executionTime}ms`
+            });
+        } else if (executionTime > 1000) {
+            // Log moderately slow queries (> 1 second) at debug level
+            const modelName = query.model?.modelName || query.constructor?.modelName || 'Unknown';
+            logger.debug(`Query took ${executionTime}ms: ${modelName}.${operation}`);
+        }
     }
 };
