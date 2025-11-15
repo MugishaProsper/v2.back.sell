@@ -13,6 +13,7 @@ import loggerMiddleware from './middlewares/logger.middleware.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import { ipRateLimiter, userRateLimiter } from './middlewares/rate-limit.middleware.js';
 import { sanitizeNoSQL, sanitizeXSS, customSanitize } from './middlewares/sanitization.middleware.js';
+import { versionNegotiation } from './middlewares/versioning.middleware.js';
 import {
     configureHelmet,
     configureCORS,
@@ -66,6 +67,9 @@ app.use(detectSuspiciousActivity);
 
 // Request logging middleware
 app.use(loggerMiddleware);
+
+// API version negotiation middleware
+app.use('/api', versionNegotiation);
 
 // Swagger API Documentation
 import swaggerUi from 'swagger-ui-express';
@@ -164,7 +168,8 @@ const startServer = async () => {
         // Start listening
         httpServer.listen(PORT, () => {
             logger.info(`Server is running on port ${PORT} in ${process.env.NODE_ENV} mode`);
-            logger.info(`Health check available at http://localhost:${PORT}/health`);
+            logger.info(`API Documentation available at http://localhost:${PORT}/api-docs`);
+            logger.info(`Health check available at http://localhost:${PORT}/api/v1/health`);
             logger.info(`Socket.IO server ready for connections`);
         });
     } catch (error) {

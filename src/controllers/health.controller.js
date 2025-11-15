@@ -4,6 +4,53 @@ import aiIntegrationService from '../services/ai-integration.service.js';
 import logger from '../config/logger.js';
 
 /**
+ * @desc    Get API version information
+ * @route   GET /api/versions
+ * @access  Public
+ */
+export const getVersionInfo = async (req, res) => {
+    try {
+        const versionInfo = {
+            success: true,
+            data: {
+                current: 'v1',
+                supported: ['v1'],
+                deprecated: [],
+                versions: {
+                    v1: {
+                        status: 'stable',
+                        releaseDate: '2025-11-15',
+                        sunsetDate: null,
+                        documentation: `${req.protocol}://${req.get('host')}/api-docs`,
+                        features: [
+                            'Authentication & Authorization',
+                            'Auction Management',
+                            'Real-time Bidding',
+                            'Payment Processing',
+                            'AI Integration',
+                            'Notifications',
+                            'Analytics & Reporting',
+                        ],
+                    },
+                },
+            },
+        };
+
+        res.status(200).json(versionInfo);
+    } catch (error) {
+        logger.error('Version info retrieval failed:', error);
+        res.status(500).json({
+            success: false,
+            error: {
+                code: 'INTERNAL_SERVER_ERROR',
+                message: 'Failed to retrieve version information',
+                timestamp: new Date().toISOString(),
+            },
+        });
+    }
+};
+
+/**
  * @desc    Basic health check
  * @route   GET /api/v1/health
  * @access  Public
