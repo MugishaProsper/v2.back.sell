@@ -88,6 +88,69 @@ app.get('/api-docs.json', (_req, res) => {
     res.send(swaggerSpec);
 });
 
+// API version information endpoint (outside versioned routes)
+import { getVersionInfo } from './controllers/health.controller.js';
+
+/**
+ * @swagger
+ * /api/versions:
+ *   get:
+ *     summary: Get API version information
+ *     description: Returns information about all supported API versions, their status, and features
+ *     tags: [Health]
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: API version information retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     current:
+ *                       type: string
+ *                       example: v1
+ *                     supported:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: [v1]
+ *                     deprecated:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: []
+ *                     versions:
+ *                       type: object
+ *                       additionalProperties:
+ *                         type: object
+ *                         properties:
+ *                           status:
+ *                             type: string
+ *                             enum: [stable, beta, deprecated]
+ *                           releaseDate:
+ *                             type: string
+ *                             format: date
+ *                           sunsetDate:
+ *                             type: string
+ *                             format: date
+ *                             nullable: true
+ *                           documentation:
+ *                             type: string
+ *                             format: uri
+ *                           features:
+ *                             type: array
+ *                             items:
+ *                               type: string
+ */
+app.get('/api/versions', getVersionInfo);
+
 // API routes
 import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
