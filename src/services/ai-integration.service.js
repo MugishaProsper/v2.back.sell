@@ -370,6 +370,26 @@ class AIIntegrationService {
             nextAttempt: this.circuitBreaker.nextAttempt
         };
     }
+
+    /**
+     * Check AI module health
+     * @returns {Promise<boolean>} True if AI module is available
+     */
+    async checkAIHealth() {
+        if (this.useMockAI) {
+            return true;
+        }
+
+        try {
+            const response = await axios.get(`${this.aiModuleUrl}/health`, {
+                timeout: 3000,
+            });
+            return response.status === 200;
+        } catch (error) {
+            logger.warn('AI module health check failed:', error.message);
+            return false;
+        }
+    }
 }
 
 // Export singleton instance

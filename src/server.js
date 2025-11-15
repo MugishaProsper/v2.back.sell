@@ -67,14 +67,21 @@ app.use(detectSuspiciousActivity);
 // Request logging middleware
 app.use(loggerMiddleware);
 
-// Health check endpoint
-app.get('/health', (_req, res) => {
-    res.status(200).json({
-        success: true,
-        message: 'API is running',
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-    });
+// Swagger API Documentation
+import swaggerUi from 'swagger-ui-express';
+import swaggerSpec from './config/swagger.config.js';
+
+// Serve Swagger UI at /api-docs
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    explorer: true,
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'AI Auction Platform API Documentation',
+}));
+
+// Serve Swagger JSON spec
+app.get('/api-docs.json', (_req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
 });
 
 // API routes
@@ -86,6 +93,20 @@ import aiWebhookRoutes from './routes/ai-webhook.routes.js';
 import notificationRoutes from './routes/notification.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import auditRoutes from './routes/audit.routes.js';
+import healthRoutes from './routes/health.routes.js';
+
+// Health check routes (v1 API)
+app.use('/api/v1/health', healthRoutes);
+
+// Legacy health check endpoint (for backward compatibility)
+app.get('/health', (_req, res) => {
+    res.status(200).json({
+        success: true,
+        message: 'API is running - use /api/v1/health for detailed health check',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+    });
+});
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRateLimiter, userRoutes);
