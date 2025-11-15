@@ -79,22 +79,47 @@ export const errorHandler = (err, req, res, next) => {
     const statusCode = error.statusCode || 500;
     const errorResponse = formatErrorResponse(error, req);
 
-    // Log error
+    // Log error with stack trace and full context
+    const errorLogData = {
+        errorCode: error.code || 'INTERNAL_SERVER_ERROR',
+        errorMessage: error.message,
+        statusCode,
+        path: req.originalUrl,
+        method: req.method,
+        requestId: errorResponse.error.requestId,
+        userId: req.user?.id || req.user?._id || null,
+        userRole: req.user?.role || null,
+        ip: req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress,
+        userAgent: req.headers['user-agent'],
+        timestamp: new Date().toISOString()
+    };
+
+    // Add stack trace for server errors and in development
+    if (statusCode >= 500 || process.env.NODE_ENV === 'development') {
+        errorLogData.stack = error.stack;
+    }
+
+    // Add error details if present
+    if (error.details) {
+        errorLogData.details = error.details;
+    }
+
+    // Add request body for debugging (exclude sensitive fields)
+    if (req.body && Object.keys(req.body).length > 0) {
+        const sanitizedBody = { ...req.body };
+        // Remove sensitive fields
+        delete sanitizedBody.password;
+        delete sanitizedBody.token;
+        delete sanitizedBody.refreshToken;
+        delete sanitizedBody.secret;
+        errorLogData.requestBody = sanitizedBody;
+    }
+
+    // Log with appropriate level
     if (statusCode >= 500) {
-        logger.error('Server Error:', {
-            error: error.message,
-            stack: error.stack,
-            path: req.originalUrl,
-            method: req.method,
-            requestId: errorResponse.error.requestId,
-        });
-    } else {
-        logger.warn('Client Error:', {
-            error: error.message,
-            path: req.originalUrl,
-            method: req.method,
-            statusCode,
-        });
+        logger.error('Server Error', errorLogData);
+    } else if (statusCode >= 400) {
+        logger.warn('Client Error', errorLogData);
     }
 
     // Send error response

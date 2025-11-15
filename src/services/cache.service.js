@@ -1,5 +1,6 @@
 import { redisClient } from '../config/redis.config.js';
 import logger from '../config/logger.js';
+import performanceMonitor from './performance-monitor.service.js';
 import crypto from 'crypto';
 
 /**
@@ -58,16 +59,39 @@ class CacheService {
      * @returns {Promise<any|null>} Cached data or null
      */
     async get(key) {
+        const startTime = Date.now();
         try {
             const cached = await redisClient.get(key);
+            const duration = Date.now() - startTime;
+            
             if (cached) {
                 logger.debug(`Cache hit: ${key}`);
+                performanceMonitor.trackCacheOperation({
+                    operation: 'get',
+                    key,
+                    hit: true,
+                    duration
+                });
                 return JSON.parse(cached);
             }
+            
             logger.debug(`Cache miss: ${key}`);
+            performanceMonitor.trackCacheOperation({
+                operation: 'get',
+                key,
+                hit: false,
+                duration
+            });
             return null;
         } catch (error) {
             logger.error(`Error reading from cache (${key}):`, error.message);
+            const duration = Date.now() - startTime;
+            performanceMonitor.trackCacheOperation({
+                operation: 'get',
+                key,
+                hit: false,
+                duration
+            });
             return null;
         }
     }
@@ -80,12 +104,26 @@ class CacheService {
      * @returns {Promise<boolean>} Success status
      */
     async set(key, data, ttl = this.defaultTTL) {
+        const startTime = Date.now();
         try {
             await redisClient.setex(key, ttl, JSON.stringify(data));
+            const duration = Date.now() - startTime;
+            
             logger.debug(`Cache set: ${key} (TTL: ${ttl}s)`);
+            performanceMonitor.trackCacheOperation({
+                operation: 'set',
+                key,
+                duration
+            });
             return true;
         } catch (error) {
             logger.error(`Error writing to cache (${key}):`, error.message);
+            const duration = Date.now() - startTime;
+            performanceMonitor.trackCacheOperation({
+                operation: 'set',
+                key,
+                duration
+            });
             return false;
         }
     }
@@ -96,12 +134,26 @@ class CacheService {
      * @returns {Promise<boolean>} Success status
      */
     async delete(key) {
+        const startTime = Date.now();
         try {
             await redisClient.del(key);
+            const duration = Date.now() - startTime;
+            
             logger.debug(`Cache deleted: ${key}`);
+            performanceMonitor.trackCacheOperation({
+                operation: 'delete',
+                key,
+                duration
+            });
             return true;
         } catch (error) {
             logger.error(`Error deleting from cache (${key}):`, error.message);
+            const duration = Date.now() - startTime;
+            performanceMonitor.trackCacheOperation({
+                operation: 'delete',
+                key,
+                duration
+            });
             return false;
         }
     }

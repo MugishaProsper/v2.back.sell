@@ -15,6 +15,9 @@ Backend API for an AI-powered digital auction marketplace built with Node.js, Ex
 - **Centralized Error Handling**
 - **Request Logging** with Winston
 - **Background Job Processing** with Bull
+- **Swagger/OpenAPI Documentation** - Interactive API documentation
+- **Health Check Endpoints** - System and service monitoring
+- **API Versioning** - URL and header-based version negotiation
 
 ## Prerequisites
 
@@ -106,12 +109,61 @@ npm start
 
 ## API Documentation
 
-### Health Check
+### Interactive Documentation (Swagger UI)
+
+Access the interactive API documentation at:
+
 ```
-GET /health
+http://localhost:5000/api-docs
 ```
 
-Returns server status and uptime.
+Features:
+- Browse all available endpoints
+- Test API calls directly from the browser
+- View request/response schemas
+- Authenticate with JWT tokens
+- See example requests and responses
+
+### OpenAPI Specification
+
+Download the OpenAPI JSON specification:
+
+```
+http://localhost:5000/api-docs.json
+```
+
+Import this into Postman, Insomnia, or other API tools.
+
+### Quick Start
+
+See [API Quick Start Guide](./docs/API_QUICK_START.md) for a step-by-step guide to using the API.
+
+### Health Check Endpoints
+
+**Basic Health Check:**
+```
+GET /api/v1/health
+```
+Returns server status and uptime (< 500ms response time).
+
+**Detailed Health Check:**
+```
+GET /api/v1/health/detailed
+```
+Returns comprehensive health information including:
+- Database connectivity
+- Redis connectivity
+- AI Module availability
+- Memory usage
+- Response times
+
+### API Version Information
+
+```
+GET /api/versions
+```
+
+Returns information about all supported API versions, their status, and features.
 
 ### API Endpoints
 
@@ -125,6 +177,14 @@ All API endpoints are prefixed with `/api/v1`:
 - `/api/v1/notifications` - Notifications
 - `/api/v1/analytics` - Analytics and reporting
 - `/api/v1/webhooks` - Webhook receivers
+- `/api/v1/health` - Health check endpoints
+
+### Documentation Resources
+
+- [API Quick Start Guide](./docs/API_QUICK_START.md) - Get started quickly
+- [API Documentation Guide](./docs/API_DOCUMENTATION_GUIDE.md) - Comprehensive API guide
+- [API Versioning Strategy](./docs/API_VERSIONING.md) - Version management details
+- [Security Documentation](./docs/SECURITY.md) - Security best practices
 
 ## Security Features
 
