@@ -5,6 +5,7 @@ import aiWebhookService from './ai-webhook.service.js';
 import notificationEventService from './notification-event.service.js';
 import bidRepository from '../repositories/bid.repository.js';
 import cacheService from './cache.service.js';
+import prometheusMetrics from './prometheus-metrics.service.js';
 import logger from '../config/logger.js';
 import Bull from 'bull';
 import { configDotenv } from 'dotenv';
@@ -106,6 +107,12 @@ class AuctionService {
 
             // Create auction
             const createdAuction = await auctionRepository.create(auction);
+
+            // Track auction creation metric
+            prometheusMetrics.trackAuctionCreated(
+                createdAuction.category || 'unknown',
+                seller.role || 'seller'
+            );
 
             // Schedule expiration job if auction is active
             if (createdAuction.status === 'active') {
@@ -590,6 +597,15 @@ class AuctionService {
 
             // Update status to closed
             await auctionRepository.updateStatus(auctionId, 'closed');
+
+            // Track auction closed metric
+            const hasWinner = !!auction.bidding.highestBid;
+            const finalValue = auction.pricing.currentPrice || 0;
+            prometheusMetrics.trackAuctionClosed(
+                auction.category || 'unknown',
+                hasWinner,
+                finalValue
+            );
 
             // If there's a highest bid, determine winner
             let winningBid = null;

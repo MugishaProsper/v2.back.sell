@@ -5,6 +5,7 @@ import { configDotenv } from 'dotenv';
 import logger from '../config/logger.js';
 import cacheService from './cache.service.js';
 import mockAIService from './mock-ai.service.js';
+import prometheusMetrics from './prometheus-metrics.service.js';
 
 configDotenv();
 
@@ -196,6 +197,7 @@ class AIIntegrationService {
      * @returns {Promise<object>} Fraud analysis result
      */
     async analyzeBidFraud(bidData) {
+        const startTime = Date.now();
         const cacheKey = `fraud:${bidData.bidId}`;
         
         // Check cache first
@@ -206,6 +208,11 @@ class AIIntegrationService {
             logger.info('Using mock fraud detection');
             const mockResult = this.mockFraudDetection(bidData);
             await this.cacheResponse(cacheKey, mockResult);
+            
+            // Track AI request metric
+            const duration = Date.now() - startTime;
+            prometheusMetrics.trackAIRequest('fraud_detection', 'success', duration);
+            
             return mockResult;
         }
 
@@ -232,9 +239,17 @@ class AIIntegrationService {
             // Cache the result
             await this.cacheResponse(cacheKey, result);
             
+            // Track AI request metric
+            const duration = Date.now() - startTime;
+            prometheusMetrics.trackAIRequest('fraud_detection', 'success', duration);
+            
             return result;
         } catch (error) {
             logger.error('gRPC fraud detection failed:', error.message);
+            
+            // Track AI request failure
+            const duration = Date.now() - startTime;
+            prometheusMetrics.trackAIRequest('fraud_detection', 'failure', duration);
             
             // Fallback to mock if gRPC fails
             logger.warn('Falling back to mock fraud detection');

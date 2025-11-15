@@ -1,5 +1,6 @@
 import logger from '../config/logger.js';
 import { redisClient } from '../config/redis.config.js';
+import prometheusMetrics from './prometheus-metrics.service.js';
 
 /**
  * PerformanceMonitorService - Tracks and logs performance metrics
@@ -127,6 +128,9 @@ class PerformanceMonitorService {
         this.metrics.database.totalQueries++;
         this.metrics.database.totalDuration += duration;
 
+        // Track in Prometheus
+        prometheusMetrics.trackDatabaseQuery(model, operation, duration);
+
         // Track by operation
         const opStats = this.metrics.database.byOperation.get(operation) || {
             count: 0,
@@ -195,6 +199,20 @@ class PerformanceMonitorService {
             } else {
                 this.metrics.cache.misses++;
             }
+            
+            // Track in Prometheus
+            const result = hit ? 'hit' : 'miss';
+            prometheusMetrics.trackCacheOperation(operation, result);
+        } else {
+            // Track other cache operations
+            prometheusMetrics.trackCacheOperation(operation, 'success');
+        }
+
+        // Update cache hit ratio in Prometheus
+        const totalCacheOps = this.metrics.cache.hits + this.metrics.cache.misses;
+        if (totalCacheOps > 0) {
+            const hitRatio = this.metrics.cache.hits / totalCacheOps;
+            prometheusMetrics.updateCacheHitRatio(hitRatio);
         }
 
         // Track by operation type

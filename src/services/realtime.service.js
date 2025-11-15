@@ -1,5 +1,6 @@
 import logger from '../config/logger.js';
 import { emitToAuctionRoom, emitToUser } from '../config/socket.config.js';
+import prometheusMetrics from './prometheus-metrics.service.js';
 
 /**
  * RealtimeService - Handles real-time event broadcasting via Socket.IO
@@ -64,6 +65,9 @@ class RealtimeService {
 
             emitToAuctionRoom(this.io, auctionId, 'bid:new', eventData);
             
+            // Track WebSocket message metric
+            prometheusMetrics.trackWebSocketMessage('bid:new', 'outbound');
+            
             logger.info(`New bid event emitted for auction ${auctionId}`);
         } catch (error) {
             logger.error('Error emitting new bid event:', error.message);
@@ -95,10 +99,14 @@ class RealtimeService {
 
             emitToAuctionRoom(this.io, auctionId, 'bid:update', eventData);
             
+            // Track WebSocket message metric
+            prometheusMetrics.trackWebSocketMessage('bid:update', 'outbound');
+            
             // Also emit to the specific bidder
             if (bidData.bidder) {
                 const bidderId = bidData.bidder._id || bidData.bidder;
                 emitToUser(this.io, bidderId.toString(), 'bid:status', eventData);
+                prometheusMetrics.trackWebSocketMessage('bid:status', 'outbound');
             }
             
             logger.info(`Bid update event emitted for auction ${auctionId}`);
@@ -134,6 +142,9 @@ class RealtimeService {
             };
 
             emitToAuctionRoom(this.io, auctionId, 'auction:update', eventData);
+            
+            // Track WebSocket message metric
+            prometheusMetrics.trackWebSocketMessage('auction:update', 'outbound');
             
             logger.info(`Auction update event emitted for auction ${auctionId} (type: ${updateType})`);
         } catch (error) {
@@ -172,12 +183,16 @@ class RealtimeService {
 
             emitToAuctionRoom(this.io, auctionId, 'auction:closed', eventData);
             
+            // Track WebSocket message metric
+            prometheusMetrics.trackWebSocketMessage('auction:closed', 'outbound');
+            
             // Emit to winner if exists
             if (winnerData && winnerData.hasWinner && winnerData.winner) {
                 emitToUser(this.io, winnerData.winner.toString(), 'auction:won', {
                     auction: eventData.auction,
                     timestamp: eventData.timestamp
                 });
+                prometheusMetrics.trackWebSocketMessage('auction:won', 'outbound');
             }
             
             logger.info(`Auction closed event emitted for auction ${auctionId}`);
@@ -351,6 +366,9 @@ class RealtimeService {
             };
 
             emitToUser(this.io, userId.toString(), 'notification:new', eventData);
+            
+            // Track WebSocket message metric
+            prometheusMetrics.trackWebSocketMessage('notification:new', 'outbound');
             
             logger.info(`Notification emitted to user ${userId}`);
         } catch (error) {

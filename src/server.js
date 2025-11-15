@@ -11,6 +11,7 @@ import realtimeService from './services/realtime.service.js';
 import aiIntegrationService from './services/ai-integration.service.js';
 import loggerMiddleware from './middlewares/logger.middleware.js';
 import performanceMiddleware from './middlewares/performance.middleware.js';
+import prometheusMiddleware from './middlewares/prometheus.middleware.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import { ipRateLimiter, userRateLimiter } from './middlewares/rate-limit.middleware.js';
 import { sanitizeNoSQL, sanitizeXSS, customSanitize } from './middlewares/sanitization.middleware.js';
@@ -71,6 +72,9 @@ app.use(loggerMiddleware);
 
 // Performance monitoring middleware
 app.use(performanceMiddleware);
+
+// Prometheus metrics middleware
+app.use(prometheusMiddleware);
 
 // API version negotiation middleware
 app.use('/api', versionNegotiation);
@@ -165,6 +169,10 @@ import notificationRoutes from './routes/notification.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
 import auditRoutes from './routes/audit.routes.js';
 import healthRoutes from './routes/health.routes.js';
+import metricsRoutes from './routes/metrics.routes.js';
+
+// Prometheus metrics endpoint (no authentication required for scraping)
+app.use('/metrics', metricsRoutes);
 
 // Health check routes (v1 API)
 app.use('/api/v1/health', healthRoutes);
@@ -237,6 +245,7 @@ const startServer = async () => {
             logger.info(`Server is running on port ${PORT} in ${process.env.NODE_ENV} mode`);
             logger.info(`API Documentation available at http://localhost:${PORT}/api-docs`);
             logger.info(`Health check available at http://localhost:${PORT}/api/v1/health`);
+            logger.info(`Prometheus metrics available at http://localhost:${PORT}/metrics`);
             logger.info(`Socket.IO server ready for connections`);
         });
     } catch (error) {

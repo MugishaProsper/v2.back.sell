@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import logger from '../config/logger.js';
 import crypto from 'crypto';
 import cacheService from './cache.service.js';
+import prometheusMetrics from './prometheus-metrics.service.js';
 
 class AuthService {
     /**
@@ -49,6 +50,9 @@ class AuthService {
             });
             
             await user.save();
+            
+            // Track user registration metric
+            prometheusMetrics.trackUserRegistration(user.role || 'buyer');
             
             // Generate tokens
             const tokens = user.generateTokens();

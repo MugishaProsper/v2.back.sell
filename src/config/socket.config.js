@@ -3,6 +3,7 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
 import jwt from 'jsonwebtoken';
 import logger from './logger.js';
+import prometheusMetrics from '../services/prometheus-metrics.service.js';
 import { configDotenv } from 'dotenv';
 
 configDotenv();
@@ -106,6 +107,10 @@ export const initializeSocketIO = async (httpServer) => {
         // Handle connections to auctions namespace
         auctionsNamespace.on('connection', (socket) => {
             logger.info(`Client connected to auctions namespace: ${socket.id} (user: ${socket.userId})`);
+            
+            // Update WebSocket connection count
+            const connectionCount = auctionsNamespace.sockets.size;
+            prometheusMetrics.updateWebSocketConnections(connectionCount);
 
             // Join auction room
             socket.on('join:auction', (auctionId) => {
@@ -143,6 +148,10 @@ export const initializeSocketIO = async (httpServer) => {
             // Handle disconnection
             socket.on('disconnect', (reason) => {
                 logger.info(`Client disconnected from auctions namespace: ${socket.id} (reason: ${reason})`);
+                
+                // Update WebSocket connection count
+                const connectionCount = auctionsNamespace.sockets.size;
+                prometheusMetrics.updateWebSocketConnections(connectionCount);
             });
 
             // Handle errors

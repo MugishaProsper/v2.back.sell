@@ -6,6 +6,7 @@ import aiWebhookService from './ai-webhook.service.js';
 import aiIntegrationService from './ai-integration.service.js';
 import notificationEventService from './notification-event.service.js';
 import cacheService from './cache.service.js';
+import prometheusMetrics from './prometheus-metrics.service.js';
 import logger from '../config/logger.js';
 
 /**
@@ -90,6 +91,9 @@ class BidService {
                     analyzedAt: null
                 }
             });
+
+            // Track bid placed metric
+            prometheusMetrics.trackBidPlaced(auction.category || 'unknown', amount);
 
             // Perform fraud detection analysis (within 500ms requirement)
             // Run asynchronously to not block bid placement
@@ -534,6 +538,11 @@ class BidService {
             // If fraud is detected, emit alert
             if (fraudAnalysis.isFraudulent) {
                 logger.warn(`Fraudulent bid detected: ${bid._id} with risk score ${fraudAnalysis.riskScore}`);
+                
+                // Track fraudulent bid metric
+                const riskLevel = fraudAnalysis.riskScore >= 0.8 ? 'high' : 
+                                 fraudAnalysis.riskScore >= 0.5 ? 'medium' : 'low';
+                prometheusMetrics.trackFraudulentBid(riskLevel);
                 
                 // Emit fraud alert event
                 if (realtimeService.isInitialized()) {
