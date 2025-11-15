@@ -10,6 +10,7 @@ import { initializeSocketIO } from './config/socket.config.js';
 import realtimeService from './services/realtime.service.js';
 import aiIntegrationService from './services/ai-integration.service.js';
 import loggerMiddleware from './middlewares/logger.middleware.js';
+import performanceMiddleware from './middlewares/performance.middleware.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import { ipRateLimiter, userRateLimiter } from './middlewares/rate-limit.middleware.js';
 import { sanitizeNoSQL, sanitizeXSS, customSanitize } from './middlewares/sanitization.middleware.js';
@@ -67,6 +68,9 @@ app.use(detectSuspiciousActivity);
 
 // Request logging middleware
 app.use(loggerMiddleware);
+
+// Performance monitoring middleware
+app.use(performanceMiddleware);
 
 // API version negotiation middleware
 app.use('/api', versionNegotiation);

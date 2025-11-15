@@ -121,23 +121,30 @@ const setupQueryMonitoring = () => {
 const logQueryTime = (query, operation) => {
     if (query._startTime) {
         const executionTime = Date.now() - query._startTime;
+        const modelName = query.model?.modelName || query.constructor?.modelName || 'Unknown';
+        const conditions = query.getQuery?.() || query._conditions || {};
+        const options = query.getOptions?.() || {};
+        
+        // Track query performance in performance monitor
+        performanceMonitor.trackDatabaseQuery({
+            model: modelName,
+            operation,
+            duration: executionTime,
+            conditions,
+            options
+        });
         
         // Log slow queries (> 3 seconds)
         if (executionTime > 3000) {
-            const modelName = query.model?.modelName || query.constructor?.modelName || 'Unknown';
-            const conditions = JSON.stringify(query.getQuery?.() || query._conditions || {});
-            const options = JSON.stringify(query.getOptions?.() || {});
-            
             logger.warn(`Slow query detected (${executionTime}ms)`, {
                 model: modelName,
                 operation,
-                conditions,
-                options,
+                conditions: JSON.stringify(conditions),
+                options: JSON.stringify(options),
                 executionTime: `${executionTime}ms`
             });
         } else if (executionTime > 1000) {
             // Log moderately slow queries (> 1 second) at debug level
-            const modelName = query.model?.modelName || query.constructor?.modelName || 'Unknown';
             logger.debug(`Query took ${executionTime}ms: ${modelName}.${operation}`);
         }
     }

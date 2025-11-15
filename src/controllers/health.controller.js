@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { redisClient } from '../config/redis.config.js';
 import aiIntegrationService from '../services/ai-integration.service.js';
+import performanceMonitor from '../services/performance-monitor.service.js';
 import logger from '../config/logger.js';
 
 /**
@@ -210,6 +211,59 @@ export const detailedHealthCheck = async (req, res) => {
             timestamp: new Date().toISOString(),
             error: error.message,
             responseTime: Date.now() - startTime,
+        });
+    }
+};
+
+/**
+ * @desc    Get performance metrics
+ * @route   GET /api/v1/health/metrics
+ * @access  Public (consider restricting to admin in production)
+ */
+export const getPerformanceMetrics = async (req, res) => {
+    try {
+        const metrics = performanceMonitor.getMetrics();
+        
+        res.status(200).json({
+            success: true,
+            data: metrics
+        });
+    } catch (error) {
+        logger.error('Performance metrics retrieval failed:', error);
+        res.status(500).json({
+            success: false,
+            error: {
+                code: 'INTERNAL_SERVER_ERROR',
+                message: 'Failed to retrieve performance metrics',
+                timestamp: new Date().toISOString(),
+            },
+        });
+    }
+};
+
+/**
+ * @desc    Reset performance metrics
+ * @route   POST /api/v1/health/metrics/reset
+ * @access  Admin only (should be protected in production)
+ */
+export const resetPerformanceMetrics = async (req, res) => {
+    try {
+        performanceMonitor.resetMetrics();
+        
+        res.status(200).json({
+            success: true,
+            message: 'Performance metrics reset successfully',
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        logger.error('Performance metrics reset failed:', error);
+        res.status(500).json({
+            success: false,
+            error: {
+                code: 'INTERNAL_SERVER_ERROR',
+                message: 'Failed to reset performance metrics',
+                timestamp: new Date().toISOString(),
+            },
         });
     }
 };
