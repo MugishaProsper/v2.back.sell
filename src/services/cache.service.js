@@ -13,8 +13,21 @@ class CacheService {
             search: 'search:',
             auction: 'auction:',
             user: 'user:',
+            session: 'session:',
             recommendations: 'recommendations:',
-            analytics: 'analytics:'
+            analytics: 'analytics:',
+            aiPrediction: 'ai:prediction:'
+        };
+        
+        // TTL configurations for different data types (in seconds)
+        this.ttlConfig = {
+            session: 900,        // 15 minutes
+            auction: 300,        // 5 minutes
+            search: 300,         // 5 minutes
+            aiPrediction: 3600,  // 1 hour
+            analytics: 3600,     // 1 hour
+            user: 900,           // 15 minutes
+            recommendations: 3600 // 1 hour
         };
     }
 
@@ -202,6 +215,289 @@ class CacheService {
             return true;
         } catch (error) {
             logger.error('Error flushing cache:', error.message);
+            return false;
+        }
+    }
+
+    /**
+     * Get TTL for a specific data type
+     * @param {string} type - Data type (session, auction, search, etc.)
+     * @returns {number} TTL in seconds
+     */
+    getTTL(type) {
+        return this.ttlConfig[type] || this.defaultTTL;
+    }
+
+    /**
+     * Set with automatic TTL based on data type
+     * @param {string} type - Data type
+     * @param {string} key - Cache key
+     * @param {any} data - Data to cache
+     * @returns {Promise<boolean>} Success status
+     */
+    async setWithType(type, key, data) {
+        const ttl = this.getTTL(type);
+        const fullKey = this.prefixes[type] ? `${this.prefixes[type]}${key}` : key;
+        return await this.set(fullKey, data, ttl);
+    }
+
+    /**
+     * Get with automatic prefix based on data type
+     * @param {string} type - Data type
+     * @param {string} key - Cache key
+     * @returns {Promise<any|null>} Cached data or null
+     */
+    async getWithType(type, key) {
+        const fullKey = this.prefixes[type] ? `${this.prefixes[type]}${key}` : key;
+        return await this.get(fullKey);
+    }
+
+    /**
+     * Delete with automatic prefix based on data type
+     * @param {string} type - Data type
+     * @param {string} key - Cache key
+     * @returns {Promise<boolean>} Success status
+     */
+    async deleteWithType(type, key) {
+        const fullKey = this.prefixes[type] ? `${this.prefixes[type]}${key}` : key;
+        return await this.delete(fullKey);
+    }
+
+    /**
+     * Cache user session data
+     * @param {string} userId - User ID
+     * @param {Object} sessionData - Session data
+     * @returns {Promise<boolean>} Success status
+     */
+    async cacheUserSession(userId, sessionData) {
+        return await this.setWithType('session', userId, sessionData);
+    }
+
+    /**
+     * Get cached user session
+     * @param {string} userId - User ID
+     * @returns {Promise<Object|null>} Session data or null
+     */
+    async getUserSession(userId) {
+        return await this.getWithType('session', userId);
+    }
+
+    /**
+     * Invalidate user session
+     * @param {string} userId - User ID
+     * @returns {Promise<boolean>} Success status
+     */
+    async invalidateUserSession(userId) {
+        return await this.deleteWithType('session', userId);
+    }
+
+    /**
+     * Cache active auction listings
+     * @param {string} key - Cache key (e.g., 'active-list-page-1')
+     * @param {Object} data - Auction listings data
+     * @returns {Promise<boolean>} Success status
+     */
+    async cacheAuctionListings(key, data) {
+        return await this.setWithType('auction', key, data);
+    }
+
+    /**
+     * Get cached auction listings
+     * @param {string} key - Cache key
+     * @returns {Promise<Object|null>} Auction listings or null
+     */
+    async getAuctionListings(key) {
+        return await this.getWithType('auction', key);
+    }
+
+    /**
+     * Cache AI prediction
+     * @param {string} auctionId - Auction ID
+     * @param {Object} prediction - AI prediction data
+     * @returns {Promise<boolean>} Success status
+     */
+    async cacheAIPrediction(auctionId, prediction) {
+        return await this.setWithType('aiPrediction', auctionId, prediction);
+    }
+
+    /**
+     * Get cached AI prediction
+     * @param {string} auctionId - Auction ID
+     * @returns {Promise<Object|null>} AI prediction or null
+     */
+    async getAIPrediction(auctionId) {
+        return await this.getWithType('aiPrediction', auctionId);
+    }
+
+    /**
+     * Invalidate AI prediction cache
+     * @param {string} auctionId - Auction ID (optional)
+     * @returns {Promise<number>} Number of keys deleted
+     */
+    async invalidateAIPredictionCache(auctionId = null) {
+        if (auctionId) {
+            await this.deleteWithType('aiPrediction', auctionId);
+            return 1;
+        } else {
+            return await this.deletePattern(`${this.prefixes.aiPrediction}*`);
+        }
+    }
+
+    /**
+     * Cache analytics data
+     * @param {string} key - Cache key (e.g., 'dashboard', 'stats-2024-01-01')
+     * @param {Object} data - Analytics data
+     * @returns {Promise<boolean>} Success status
+     */
+    async cacheAnalytics(key, data) {
+        return await this.setWithType('analytics', key, data);
+    }
+
+    /**
+     * Get cached analytics data
+     * @param {string} key - Cache key
+     * @returns {Promise<Object|null>} Analytics data or null
+     */
+    async getAnalytics(key) {
+        return await this.getWithType('analytics', key);
+    }
+
+    /**
+     * Invalidate analytics cache
+     * @param {string} key - Specific key (optional)
+     * @returns {Promise<number>} Number of keys deleted
+     */
+    async invalidateAnalyticsCache(key = null) {
+        if (key) {
+            await this.deleteWithType('analytics', key);
+            return 1;
+        } else {
+            return await this.deletePattern(`${this.prefixes.analytics}*`);
+        }
+    }
+
+    /**
+     * Get remaining TTL for a key
+     * @param {string} key - Cache key
+     * @returns {Promise<number>} Remaining TTL in seconds (-1 if no expiry, -2 if key doesn't exist)
+     */
+    async getTTLRemaining(key) {
+        try {
+            const ttl = await redisClient.ttl(key);
+            return ttl;
+        } catch (error) {
+            logger.error(`Error getting TTL for ${key}:`, error.message);
+            return -2;
+        }
+    }
+
+    /**
+     * Extend TTL for an existing key
+     * @param {string} key - Cache key
+     * @param {number} additionalSeconds - Additional seconds to add
+     * @returns {Promise<boolean>} Success status
+     */
+    async extendTTL(key, additionalSeconds) {
+        try {
+            const currentTTL = await this.getTTLRemaining(key);
+            if (currentTTL > 0) {
+                await redisClient.expire(key, currentTTL + additionalSeconds);
+                logger.debug(`TTL extended for ${key} by ${additionalSeconds}s`);
+                return true;
+            }
+            return false;
+        } catch (error) {
+            logger.error(`Error extending TTL for ${key}:`, error.message);
+            return false;
+        }
+    }
+
+    /**
+     * Set multiple keys at once (pipeline)
+     * @param {Array} items - Array of {key, data, ttl} objects
+     * @returns {Promise<boolean>} Success status
+     */
+    async setMultiple(items) {
+        try {
+            const pipeline = redisClient.pipeline();
+            
+            for (const item of items) {
+                const { key, data, ttl = this.defaultTTL } = item;
+                pipeline.setex(key, ttl, JSON.stringify(data));
+            }
+            
+            await pipeline.exec();
+            logger.debug(`Set ${items.length} cache keys in pipeline`);
+            return true;
+        } catch (error) {
+            logger.error('Error setting multiple cache keys:', error.message);
+            return false;
+        }
+    }
+
+    /**
+     * Get multiple keys at once (pipeline)
+     * @param {Array} keys - Array of cache keys
+     * @returns {Promise<Array>} Array of cached data (null for missing keys)
+     */
+    async getMultiple(keys) {
+        try {
+            const pipeline = redisClient.pipeline();
+            
+            for (const key of keys) {
+                pipeline.get(key);
+            }
+            
+            const results = await pipeline.exec();
+            
+            return results.map(([err, data]) => {
+                if (err || !data) return null;
+                try {
+                    return JSON.parse(data);
+                } catch {
+                    return null;
+                }
+            });
+        } catch (error) {
+            logger.error('Error getting multiple cache keys:', error.message);
+            return keys.map(() => null);
+        }
+    }
+
+    /**
+     * Increment a counter in cache
+     * @param {string} key - Cache key
+     * @param {number} amount - Amount to increment (default: 1)
+     * @param {number} ttl - TTL for the key if it doesn't exist
+     * @returns {Promise<number>} New value after increment
+     */
+    async increment(key, amount = 1, ttl = null) {
+        try {
+            const newValue = await redisClient.incrby(key, amount);
+            
+            // Set TTL if provided and key was just created
+            if (ttl && newValue === amount) {
+                await redisClient.expire(key, ttl);
+            }
+            
+            return newValue;
+        } catch (error) {
+            logger.error(`Error incrementing cache key ${key}:`, error.message);
+            return 0;
+        }
+    }
+
+    /**
+     * Check if a key exists in cache
+     * @param {string} key - Cache key
+     * @returns {Promise<boolean>} True if key exists
+     */
+    async exists(key) {
+        try {
+            const result = await redisClient.exists(key);
+            return result === 1;
+        } catch (error) {
+            logger.error(`Error checking if key exists ${key}:`, error.message);
             return false;
         }
     }

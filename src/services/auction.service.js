@@ -302,7 +302,7 @@ class AuctionService {
     }
 
     /**
-     * List auctions with pagination
+     * List auctions with pagination (with caching for active auctions)
      * @param {Object} options - Query options
      * @returns {Promise<Object>} - Auctions and pagination info
      */
@@ -330,6 +330,34 @@ class AuctionService {
                 filter.seller = sellerId;
             }
 
+            // Generate cache key for active auction listings
+            if (status === 'active' && !sellerId) {
+                const cacheKey = `active-list-page-${page}-limit-${limit}-cat-${category || 'all'}`;
+                
+                // Try to get from cache
+                const cached = await cacheService.getAuctionListings(cacheKey);
+                if (cached) {
+                    logger.debug(`Auction listings retrieved from cache: ${cacheKey}`);
+                    return {
+                        ...cached,
+                        cached: true
+                    };
+                }
+                
+                // Fetch from database
+                const result = await auctionRepository.findWithPagination(
+                    filter,
+                    page,
+                    limit
+                );
+                
+                // Cache the result (TTL: 5 minutes)
+                await cacheService.cacheAuctionListings(cacheKey, result);
+                
+                return result;
+            }
+
+            // For non-active or seller-specific queries, don't cache
             const result = await auctionRepository.findWithPagination(
                 filter,
                 page,

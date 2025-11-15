@@ -2,6 +2,7 @@ import User from '../models/user.model.js';
 import jwt from 'jsonwebtoken';
 import logger from '../config/logger.js';
 import crypto from 'crypto';
+import cacheService from './cache.service.js';
 
 class AuthService {
     /**
@@ -106,6 +107,15 @@ class AuthService {
             const userResponse = user.toObject();
             delete userResponse.password;
             
+            // Cache user session data (TTL: 15 minutes)
+            await cacheService.cacheUserSession(user._id.toString(), {
+                userId: user._id,
+                email: user.email,
+                role: user.role,
+                profile: user.profile,
+                lastLogin: user.lastLogin
+            });
+            
             logger.info(`User logged in successfully: ${email}`);
             
             return {
@@ -159,21 +169,58 @@ class AuthService {
     }
     
     /**
-     * Get user by ID
+     * Get user by ID (with caching)
      * @param {string} userId - User ID
      * @returns {Object} - User object
      */
     async getUserById(userId) {
         try {
+            // Try to get from cache first
+            const cachedSession = await cacheService.getUserSession(userId);
+            if (cachedSession) {
+                logger.debug(`User session retrieved from cache: ${userId}`);
+                return cachedSession;
+            }
+            
+            // If not in cache, fetch from database
             const user = await User.findById(userId);
             
             if (!user) {
                 throw new Error('USER_NOT_FOUND');
             }
             
+            // Cache the user session
+            await cacheService.cacheUserSession(userId, {
+                userId: user._id,
+                email: user.email,
+                role: user.role,
+                profile: user.profile,
+                lastLogin: user.lastLogin
+            });
+            
             return user;
         } catch (error) {
             logger.error(`Get user error for ${userId}:`, error.message);
+            throw error;
+        }
+    }
+    
+    /**
+     * Logout user (invalidate session cache)
+     * @param {string} userId - User ID
+     * @returns {Object} - Success message
+     */
+    async logout(userId) {
+        try {
+            // Invalidate user session cache
+            await cacheService.invalidateUserSession(userId);
+            logger.info(`User logged out: ${userId}`);
+            
+            return {
+                message: 'Logout successful'
+            };
+        } catch (error) {
+            logger.error(`Logout error for ${userId}:`, error.message);
             throw error;
         }
     }
