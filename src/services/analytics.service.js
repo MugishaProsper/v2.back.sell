@@ -3,6 +3,7 @@ import User from '../models/user.model.js';
 import Auction from '../models/auction.model.js';
 import Bid from '../models/bid.model.js';
 import logger from '../config/logger.js';
+import cacheService from './cache.service.js';
 import Bull from 'bull';
 import { configDotenv } from 'dotenv';
 
@@ -122,51 +123,65 @@ class AnalyticsService {
     }
 
     /**
-     * Aggregate auction metrics for a date range
+     * Aggregate auction metrics for a date range (optimized with single aggregation)
      * @param {Date} startDate - Start date
      * @param {Date} endDate - End date
      * @returns {Promise<Object>} - Auction metrics
      */
     async aggregateAuctionMetrics(startDate, endDate) {
         try {
-            const [created, active, closed, totalValueResult] = await Promise.all([
-                // Auctions created in this period
-                Auction.countDocuments({
-                    createdAt: { $gte: startDate, $lt: endDate }
-                }),
-                // Auctions active during this period
-                Auction.countDocuments({
-                    status: 'active',
-                    'timing.startTime': { $lte: endDate },
-                    'timing.endTime': { $gte: startDate }
-                }),
-                // Auctions closed in this period
-                Auction.countDocuments({
-                    status: 'closed',
-                    updatedAt: { $gte: startDate, $lt: endDate }
-                }),
-                // Total value of closed auctions
-                Auction.aggregate([
-                    {
-                        $match: {
-                            status: 'closed',
-                            updatedAt: { $gte: startDate, $lt: endDate }
-                        }
-                    },
-                    {
-                        $group: {
-                            _id: null,
-                            totalValue: { $sum: '$pricing.currentPrice' }
-                        }
+            // Use single aggregation pipeline for better performance
+            const result = await Auction.aggregate([
+                {
+                    $facet: {
+                        created: [
+                            {
+                                $match: {
+                                    createdAt: { $gte: startDate, $lt: endDate }
+                                }
+                            },
+                            {
+                                $count: 'count'
+                            }
+                        ],
+                        active: [
+                            {
+                                $match: {
+                                    status: 'active',
+                                    'timing.startTime': { $lte: endDate },
+                                    'timing.endTime': { $gte: startDate }
+                                }
+                            },
+                            {
+                                $count: 'count'
+                            }
+                        ],
+                        closed: [
+                            {
+                                $match: {
+                                    status: 'closed',
+                                    updatedAt: { $gte: startDate, $lt: endDate }
+                                }
+                            },
+                            {
+                                $group: {
+                                    _id: null,
+                                    count: { $sum: 1 },
+                                    totalValue: { $sum: '$pricing.currentPrice' }
+                                }
+                            }
+                        ]
                     }
-                ])
+                }
             ]);
 
+            const metrics = result[0];
+            
             return {
-                created,
-                active,
-                closed,
-                totalValue: totalValueResult.length > 0 ? totalValueResult[0].totalValue : 0
+                created: metrics.created[0]?.count || 0,
+                active: metrics.active[0]?.count || 0,
+                closed: metrics.closed[0]?.count || 0,
+                totalValue: metrics.closed[0]?.totalValue || 0
             };
         } catch (error) {
             logger.error('Error aggregating auction metrics:', error.message);
@@ -220,54 +235,51 @@ class AnalyticsService {
     }
 
     /**
-     * Aggregate bid metrics for a date range
+     * Aggregate bid metrics for a date range (optimized with single aggregation)
      * @param {Date} startDate - Start date
      * @param {Date} endDate - End date
      * @returns {Promise<Object>} - Bid metrics
      */
     async aggregateBidMetrics(startDate, endDate) {
         try {
-            const [totalBids, uniqueBiddersResult, averageBidResult] = await Promise.all([
-                // Total bids placed in this period
-                Bid.countDocuments({
-                    createdAt: { $gte: startDate, $lt: endDate }
-                }),
-                // Unique bidders in this period
-                Bid.aggregate([
-                    {
-                        $match: {
-                            createdAt: { $gte: startDate, $lt: endDate }
-                        }
-                    },
-                    {
-                        $group: {
-                            _id: '$bidder'
-                        }
-                    },
-                    {
-                        $count: 'uniqueBidders'
+            // Use single aggregation pipeline for better performance
+            const result = await Bid.aggregate([
+                {
+                    $match: {
+                        createdAt: { $gte: startDate, $lt: endDate }
                     }
-                ]),
-                // Average bid amount in this period
-                Bid.aggregate([
-                    {
-                        $match: {
-                            createdAt: { $gte: startDate, $lt: endDate }
-                        }
-                    },
-                    {
-                        $group: {
-                            _id: null,
-                            averageAmount: { $avg: '$amount' }
-                        }
+                },
+                {
+                    $facet: {
+                        totalAndAverage: [
+                            {
+                                $group: {
+                                    _id: null,
+                                    totalBids: { $sum: 1 },
+                                    averageAmount: { $avg: '$amount' }
+                                }
+                            }
+                        ],
+                        uniqueBidders: [
+                            {
+                                $group: {
+                                    _id: '$bidder'
+                                }
+                            },
+                            {
+                                $count: 'count'
+                            }
+                        ]
                     }
-                ])
+                }
             ]);
 
+            const metrics = result[0];
+            
             return {
-                totalBids,
-                uniqueBidders: uniqueBiddersResult.length > 0 ? uniqueBiddersResult[0].uniqueBidders : 0,
-                averageBidAmount: averageBidResult.length > 0 ? averageBidResult[0].averageAmount : 0
+                totalBids: metrics.totalAndAverage[0]?.totalBids || 0,
+                uniqueBidders: metrics.uniqueBidders[0]?.count || 0,
+                averageBidAmount: metrics.totalAndAverage[0]?.averageAmount || 0
             };
         } catch (error) {
             logger.error('Error aggregating bid metrics:', error.message);
@@ -466,7 +478,7 @@ class AnalyticsService {
     }
 
     /**
-     * Get platform statistics (dashboard overview)
+     * Get platform statistics (dashboard overview) with caching
      * Returns within 3 seconds as per requirements
      * @returns {Promise<Object>} - Platform statistics
      */
@@ -474,6 +486,21 @@ class AnalyticsService {
         const startTime = Date.now();
         
         try {
+            // Try to get from cache first (TTL: 1 hour)
+            const cacheKey = 'dashboard';
+            const cached = await cacheService.getAnalytics(cacheKey);
+            if (cached) {
+                logger.debug('Platform statistics retrieved from cache');
+                return {
+                    ...cached,
+                    cached: true,
+                    performance: {
+                        executionTime: Date.now() - startTime,
+                        timestamp: new Date().toISOString()
+                    }
+                };
+            }
+            
             // Get latest analytics (last 7 days)
             const latestAnalytics = await analyticsRepository.getLatest(7);
 
@@ -498,7 +525,7 @@ class AnalyticsService {
             const executionTime = Date.now() - startTime;
             logger.info(`Platform statistics retrieved in ${executionTime}ms`);
 
-            return {
+            const result = {
                 overview: {
                     totalUsers,
                     totalAuctions,
@@ -508,11 +535,17 @@ class AnalyticsService {
                 today: todayStats,
                 trends,
                 recentAnalytics: latestAnalytics.slice(0, 7),
+                cached: false,
                 performance: {
                     executionTime,
                     timestamp: new Date().toISOString()
                 }
             };
+            
+            // Cache the result (TTL: 1 hour)
+            await cacheService.cacheAnalytics(cacheKey, result);
+            
+            return result;
         } catch (error) {
             logger.error('Error getting platform statistics:', error.message);
             throw error;
@@ -625,7 +658,7 @@ class AnalyticsService {
     }
 
     /**
-     * Fetch AI insights from AI module
+     * Fetch AI insights from AI module with caching
      * Returns within 5 seconds as per requirements
      * @param {Object} params - Query parameters
      * @returns {Promise<Object>} - AI insights
@@ -635,6 +668,23 @@ class AnalyticsService {
         
         try {
             const { startDate, endDate, type } = params;
+            
+            // Generate cache key based on parameters
+            const cacheKey = `ai-insights-${startDate || 'default'}-${endDate || 'default'}-${type || 'all'}`;
+            
+            // Try to get from cache first (TTL: 1 hour)
+            const cached = await cacheService.getAnalytics(cacheKey);
+            if (cached) {
+                logger.debug('AI insights retrieved from cache');
+                return {
+                    ...cached,
+                    cached: true,
+                    performance: {
+                        executionTime: Date.now() - startTime,
+                        timestamp: new Date().toISOString()
+                    }
+                };
+            }
 
             // Get AI-related metrics from analytics
             const aiMetrics = await this.getAIMetricsReport(startDate, endDate);
@@ -662,15 +712,21 @@ class AnalyticsService {
             const executionTime = Date.now() - startTime;
             logger.info(`AI insights fetched in ${executionTime}ms`);
 
-            return {
+            const result = {
                 metrics: aiMetrics,
                 recentPredictions,
                 recentFraudDetections,
+                cached: false,
                 performance: {
                     executionTime,
                     timestamp: new Date().toISOString()
                 }
             };
+            
+            // Cache the result (TTL: 1 hour)
+            await cacheService.cacheAnalytics(cacheKey, result);
+            
+            return result;
         } catch (error) {
             logger.error('Error fetching AI insights:', error.message);
             throw error;

@@ -3,7 +3,7 @@ import grpc from '@grpc/grpc-js';
 import protoLoader from '@grpc/proto-loader';
 import { configDotenv } from 'dotenv';
 import logger from '../config/logger.js';
-import { redisClient } from '../config/redis.config.js';
+import cacheService from './cache.service.js';
 import mockAIService from './mock-ai.service.js';
 
 configDotenv();
@@ -69,8 +69,6 @@ class AIIntegrationService {
         this.useMockAI = process.env.USE_MOCK_AI === 'true';
         this.circuitBreaker = new CircuitBreaker(5, 60000);
         this.grpcClient = null;
-        this.cachePrefix = 'ai:';
-        this.cacheTTL = 3600; // 1 hour in seconds
         
         // Retry configuration
         this.maxRetries = 3;
@@ -141,35 +139,17 @@ class AIIntegrationService {
     }
 
     /**
-     * Get cached AI response
+     * Get cached AI response (using centralized cache service)
      */
     async getCachedResponse(key) {
-        try {
-            const cached = await redisClient.get(`${this.cachePrefix}${key}`);
-            if (cached) {
-                logger.debug(`Cache hit for AI response: ${key}`);
-                return JSON.parse(cached);
-            }
-        } catch (error) {
-            logger.error('Error reading from cache:', error);
-        }
-        return null;
+        return await cacheService.getWithType('aiPrediction', key);
     }
 
     /**
-     * Cache AI response
+     * Cache AI response (using centralized cache service)
      */
     async cacheResponse(key, data) {
-        try {
-            await redisClient.setex(
-                `${this.cachePrefix}${key}`,
-                this.cacheTTL,
-                JSON.stringify(data)
-            );
-            logger.debug(`Cached AI response: ${key}`);
-        } catch (error) {
-            logger.error('Error writing to cache:', error);
-        }
+        return await cacheService.setWithType('aiPrediction', key, data);
     }
 
     /**

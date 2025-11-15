@@ -130,9 +130,18 @@ const startServer = async () => {
         await import('./services/analytics.service.js');
         logger.info('Analytics service initialized');
         
-        // Initialize email worker for notification processing
+        // Initialize all background workers
         await import('./workers/email.worker.js');
         logger.info('Email worker initialized');
+        
+        await import('./workers/ai-webhook.worker.js');
+        logger.info('AI webhook worker initialized');
+        
+        await import('./workers/auction-expiration.worker.js');
+        logger.info('Auction expiration worker initialized');
+        
+        await import('./workers/analytics.worker.js');
+        logger.info('Analytics worker initialized');
         
         // Start listening
         httpServer.listen(PORT, () => {
